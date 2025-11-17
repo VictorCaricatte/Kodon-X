@@ -6,7 +6,7 @@ from collections import defaultdict
 # --- DEFINIÇÕES DE CÓDONS E TABELAS GENÉTICAS (Constantes) ---
 # ######################################################################
 
-# Dicionário de dicionários para as tabelas genéticas
+# Dicionário de dicionários para as tabelas genéticas (https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi?chapter=tgencodes#SG16)
 GENETIC_CODE_TABLES = {
     1: { # Tabela 1: Padrão
         'TTT': 'F', 'TTC': 'F', 'TTA': 'L', 'TTG': 'L', 'TCT': 'S', 'TCC': 'S', 'TCA': 'S', 'TCG': 'S',
@@ -28,7 +28,7 @@ GENETIC_CODE_TABLES = {
         'GTT': 'V', 'GTC': 'V', 'GTA': 'V', 'GTG': 'V', 'GCT': 'A', 'GCC': 'A', 'GCA': 'A', 'GCG': 'A',
         'GAT': 'D', 'GAC': 'D', 'GAA': 'E', 'GAG': 'E', 'GGT': 'G', 'GGC': 'G', 'GGA': 'G', 'GGG': 'G',
     },
-    4: { # Tabela 4: Mitocondrial de Mofos, Protozoários e Celenterados
+    4: { # Tabela 4: Mitocondrial de Mold, Protozoários e Celenterados
         'TTT': 'F', 'TTC': 'F', 'TTA': 'L', 'TTG': 'L', 'TCT': 'S', 'TCC': 'S', 'TCA': 'S', 'TCG': 'S',
         'TAT': 'Y', 'TAC': 'Y', 'TAA': '*', 'TAG': '*', 'TGT': 'C', 'TGC': 'C', 'TGA': 'W', 'TGG': 'W',
         'CTT': 'L', 'CTC': 'L', 'CTA': 'L', 'CTG': 'L', 'CCT': 'P', 'CCC': 'P', 'CCA': 'P', 'CCG': 'P',
