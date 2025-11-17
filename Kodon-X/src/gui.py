@@ -520,10 +520,7 @@ class KodonE_GUI(ctk.CTk):
         self.toolbar.config(background="#2B2B2B") 
         self.toolbar._message_label.config(background="#2B2B2B", foreground="#DCE4EE")
         
-        # --- INÍCIO DA CORREÇÃO (NOVA) ---
-        # A barra de ferramentas contém widgets diferentes (Botões, Labels, Separadores)
-        # Alguns deles (como Separadores) não aceitam 'fg' ou 'background'.
-        # Usamos try/except para pular os widgets que não podem ser estilizados.
+
         for widget in self.toolbar.winfo_children():
             try:
                 # Tenta configurar botões, checkbuttons, e labels
@@ -535,7 +532,6 @@ class KodonE_GUI(ctk.CTk):
                 except tk.TclError:
                     # Ignora widgets que não podem ser configurados (ex: Separadores)
                     pass
-        # --- FIM DA CORREÇÃO ---
             
         self.toolbar.update()
         
@@ -554,23 +550,20 @@ class KodonE_GUI(ctk.CTk):
         self.console_text.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         self.console_text.configure(state='disabled')
         
-        # --- INÍCIO DA CORREÇÃO ---
         # Configurar tags para coloração (REMOVIDO o parâmetro 'font')
         self.console_text.tag_config("error", foreground=self.ERROR_COLOR)
         self.console_text.tag_config("success", foreground=self.SUCCESS_COLOR)
         self.console_text.tag_config("info", foreground=self.INFO_COLOR)
         self.console_text.tag_config("warning", foreground=self.WARNING_COLOR)
-        # --- FIM DA CORREÇÃO ---
         
         return tab
 
-    # --- INÍCIO DA RECONSTRUÇÃO DA ABA DE AJUDA ---
     
     # Mover 'add_text' para ser um método da classe
     def add_text(self, help_frame, text, style="normal", wrap_length=900):
         """Função auxiliar para adicionar texto formatado à aba de Ajuda."""
         font = self.default_font
-        text_color = None  # <--- CORREÇÃO: None usa a cor padrão do tema
+        text_color = None  
         pady = (0, 2)
 
         if style == "h1":
@@ -623,14 +616,14 @@ class KodonE_GUI(ctk.CTk):
         self.add_text(help_frame, "6. Ver Resultados", 'h3')
         self.add_text(help_frame, "Acompanhe o progresso no '🖥️ Console' e veja os gráficos gerados no '📈 Visualizador'.", 'normal')
         
-        # --- INÍCIO DA CORREÇÃO: ADICIONAR DESCRIÇÕES DAS ANÁLISES ---
+
         self.add_text(help_frame, "DESCRIÇÃO DAS ANÁLISES", 'h2')
 
         for analysis_name, data in self.analysis_data.items():
             self.add_text(help_frame, analysis_name, 'h3')
             self.add_text(help_frame, f"Requisito de Arquivos: {data['files_required']}", 'bold')
             self.add_text(help_frame, data['description'], 'normal')
-        # --- FIM DA CORREÇÃO ---
+
         
         return tab
     # --- FIM DA RECONSTRUÇÃO DA ABA DE AJUDA ---
