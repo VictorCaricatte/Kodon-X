@@ -540,7 +540,7 @@ Under the translational selection hypothesis, highly expressed genes are expecte
 ```
 kodonx/
 ├── kodonx.py                        # Main entry point (GUI)
-├── kodonargs.py                     # CLI entry point
+├── kodonxa.py                       # CLI entry point
 ├── interface.py                     # PyQt6 GUI implementation
 ├── constants.py                     # Genetic code tables, physicochemical constants, wobble matrices
 ├── core_utils.py                    # Core calculation functions (RSCU, ENC, GC3, CAI, tAI weights)
