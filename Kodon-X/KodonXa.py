@@ -46,17 +46,17 @@ def read_gene_list(filepath):
 def main():
     help_description = """
 ================================================================================
-Kodon-X CLI - Comprehensive Codon Usage and Genomic Analysis Tool
+Kodon-X - Comprehensive Codon Usage
 ================================================================================
 
 This command-line interface allows you to run all 19 analyses and the synthetic 
-biology module without a graphical interface. Perfect for servers and pipelines.
+biology module without a graphical interface. 
 
 AVAILABLE ANALYSES (-a / --analysis):
 
 [0] Synthetic Biology
     Optimizes or harmonizes a DNA sequence for a specific host genome.
-    Requires: --synth-mode, --synth-host, --synth-seq
+    Requires: --synth-mode, --synth-host, and (--synth-seq OR --synth-fasta)
 
 [1] Statistics and CDS
     Performs an initial scan on all genomes. Validates genome completeness 
@@ -149,6 +149,7 @@ AVAILABLE ANALYSES (-a / --analysis):
     parser.add_argument("-a", "--analysis", type=int, help="Analysis ID to execute (0 to 19)")
     parser.add_argument("-g", "--genetic-code", type=int, default=1, help="Genetic Code ID (Default: 1)")
     parser.add_argument("-f", "--filter-file", help="Text file with locus_tags for global filtering (one per line)")
+    parser.add_argument("--palette", default="viridis", help="Chart color palette: viridis, plasma, inferno, magma, cividis, colorblind, Set2, Pastel1, Dark2, Blues, Reds, Greens")
     parser.add_argument("--start-codon", default="ATG", help="Start codon filter for Analysis 1")
     parser.add_argument("--superkingdom", default="Bacteria", choices=["Bacteria", "Eukaryote"], help="Superkingdom for Wobble rules (Analysis 15)")
     parser.add_argument("--upstream-dist", type=int, default=200, help="Upstream distance in bp (Analysis 16)")
@@ -161,7 +162,8 @@ AVAILABLE ANALYSES (-a / --analysis):
     parser.add_argument("--expr-val", default="TPM", help="Value column name in expression file (Analysis 19)")
     parser.add_argument("--synth-mode", choices=["optimize", "harmonize"], default="optimize", help="Mode for synthetic biology (Analysis 0)")
     parser.add_argument("--synth-host", help="Host genome filename inside input dir (Analysis 0)")
-    parser.add_argument("--synth-seq", help="Input DNA sequence (Analysis 0)")
+    parser.add_argument("--synth-seq", help="Input DNA sequence as string (Analysis 0)")
+    parser.add_argument("--synth-fasta", help="Input FASTA file for Synthetic Biology (Analysis 0)")
 
     args = parser.parse_args()
 
@@ -172,8 +174,11 @@ AVAILABLE ANALYSES (-a / --analysis):
     status_queue = DummyQueue()
     
     if args.analysis == 0:
-        if not args.input or not args.synth_host or not args.synth_seq:
-            print("[!] For Synthetic Biology, provide: --input, --synth-host and --synth-seq")
+        if not args.input or not args.synth_host:
+            print("[!] For Synthetic Biology, provide: --input and --synth-host")
+            sys.exit(1)
+        if not args.synth_seq and not args.synth_fasta:
+            print("[!] For Synthetic Biology, provide --synth-seq OR --synth-fasta")
             sys.exit(1)
             
         host_filepath = os.path.join(args.input, args.synth_host)
@@ -181,6 +186,18 @@ AVAILABLE ANALYSES (-a / --analysis):
             print(f"[!] Host file not found: {host_filepath}")
             sys.exit(1)
             
+        seq = ""
+        if args.synth_fasta:
+            from Bio import SeqIO
+            try:
+                record = next(SeqIO.parse(args.synth_fasta, "fasta"))
+                seq = str(record.seq)
+            except Exception as e:
+                print(f"[!] Could not read FASTA file: {e}")
+                sys.exit(1)
+        else:
+            seq = args.synth_seq
+
         print(f"STARTING SYNTHETIC BIOLOGY ({args.synth_mode.upper()})")
         print(f"Host: {args.synth_host}")
         
@@ -192,11 +209,29 @@ AVAILABLE ANALYSES (-a / --analysis):
         host_data = all_data[list(all_data.keys())[0]]
         
         if args.synth_mode == "optimize":
-            result = optimize_codon_sequence(args.synth_seq, host_data['rscu'], args.genetic_code)
+            result = optimize_codon_sequence(seq, host_data['rscu'], args.genetic_code)
         else:
-            result = harmonize_codon_sequence(args.synth_seq, host_data['counts'], args.genetic_code)
+            result = harmonize_codon_sequence(seq, host_data['counts'], args.genetic_code)
             
         print(f"\n[+] Resulting Sequence:\n{result}")
+
+        from Bio.Seq import Seq
+        from Bio.SeqRecord import SeqRecord
+        from Bio.SeqFeature import SeqFeature, FeatureLocation
+        from Bio import SeqIO
+        
+        record = SeqRecord(Seq(result), id=f"Synth_{args.synth_mode}", name="SyntheticBio", description=f"Sequence {args.synth_mode}d for {args.synth_host}")
+        record.annotations["molecule_type"] = "DNA"
+        
+        feature = SeqFeature(FeatureLocation(start=0, end=len(result)), type="CDS")
+        record.features.append(feature)
+        
+        if args.output and not os.path.isdir(args.output):
+            os.makedirs(args.output, exist_ok=True)
+            
+        out_path = os.path.join(args.output, f"synth_{args.synth_mode}_result.gbk") if args.output else f"synth_{args.synth_mode}_result.gbk"
+        SeqIO.write(record, out_path, "genbank")
+        print(f"[+] Saved GenBank file to: {out_path}")
         sys.exit(0)
 
     if not args.input or not args.output:
@@ -217,6 +252,7 @@ AVAILABLE ANALYSES (-a / --analysis):
     print(f"STARTING ANALYSIS {args.analysis}")
     print(f"Detected files: {len(files)}")
     print(f"Genetic Code: {genetic_code_id}")
+    print(f"Palette: {args.palette}")
     if gene_list:
         print(f"Global Filter Active: {len(gene_list)} genes.")
     print("=" * 60)
@@ -252,61 +288,61 @@ AVAILABLE ANALYSES (-a / --analysis):
             if len(files) != 1:
                 print("[!] Analysis 3 requires EXACTLY 1 file.")
                 sys.exit(1)
-            generate_rscu_heatmap_and_table(all_bias_data, args.output, genetic_code_id, status_queue)
+            generate_rscu_heatmap_and_table(all_bias_data, args.output, genetic_code_id, status_queue, palette=args.palette)
 
         elif args.analysis == 4:
             if len(files) < 2:
                 print("[!] Analysis 4 requires 2 or more files.")
                 sys.exit(1)
-            comparative_rscu_analysis(all_bias_data, args.output, status_queue)
+            comparative_rscu_analysis(all_bias_data, args.output, status_queue, palette=args.palette)
 
         elif args.analysis == 5:
             if len(files) != 2:
                 print("[!] Analysis 5 requires EXACTLY 2 files.")
                 sys.exit(1)
-            rscu_correlation_analysis(all_bias_data, args.output, status_queue)
+            rscu_correlation_analysis(all_bias_data, args.output, status_queue, palette=args.palette)
 
         elif args.analysis == 6:
             if len(files) < 2:
                 print("[!] Analysis 6 requires 2 or more files.")
                 sys.exit(1)
-            generate_rscu_histograms(all_bias_data, args.output, genetic_code_id, status_queue)
+            generate_rscu_histograms(all_bias_data, args.output, genetic_code_id, status_queue, palette=args.palette)
 
         elif args.analysis == 7:
-            enc_gc3_analysis(all_bias_data, args.output, status_queue)
+            enc_gc3_analysis(all_bias_data, args.output, status_queue, palette=args.palette)
 
         elif args.analysis == 8:
-            analyze_genomic_composition(files, args.output, status_queue)
+            analyze_genomic_composition(files, args.output, status_queue, palette=args.palette)
 
         elif args.analysis == 9:
-            optimal_rare_codons_analysis(all_bias_data, args.output, status_queue)
+            optimal_rare_codons_analysis(all_bias_data, args.output, status_queue, palette=args.palette)
 
         elif args.analysis == 10:
-            codon_pair_bias_analysis(files, args.output, genetic_code_id, status_queue, gene_list)
+            codon_pair_bias_analysis(files, args.output, genetic_code_id, status_queue, gene_list, palette=args.palette)
 
         elif args.analysis == 11:
-            gravy_aromo_analysis(files, args.output, genetic_code_id, status_queue, gene_list)
+            gravy_aromo_analysis(files, args.output, genetic_code_id, status_queue, gene_list, palette=args.palette)
 
         elif args.analysis == 12:
             if len(files) < 2:
                 print("[!] Analysis 12 requires 2 or more files.")
                 sys.exit(1)
-            neutrality_plot_analysis(all_bias_data, args.output, status_queue)
+            neutrality_plot_analysis(all_bias_data, args.output, status_queue, palette=args.palette)
 
         elif args.analysis == 13:
-            dinucleotide_composition_analysis(files, args.output, status_queue)
+            dinucleotide_composition_analysis(files, args.output, status_queue, palette=args.palette)
 
         elif args.analysis == 14:
-            pr2_plot_analysis(files, args.output, genetic_code_id, status_queue, gene_list)
+            pr2_plot_analysis(files, args.output, genetic_code_id, status_queue, gene_list, palette=args.palette)
 
         elif args.analysis == 15:
-            tai_analysis(files, args.output, genetic_code_id, status_queue, gene_list, super_kingdom=args.superkingdom)
+            tai_analysis(files, args.output, genetic_code_id, status_queue, gene_list, super_kingdom=args.superkingdom, palette=args.palette)
 
         elif args.analysis == 16:
-            upstream_motifs_analysis(files, args.output, status_queue, gene_list, args.upstream_dist, args.kmer_size)
+            upstream_motifs_analysis(files, args.output, status_queue, gene_list, args.upstream_dist, args.kmer_size, palette=args.palette)
 
         elif args.analysis == 17:
-            initiation_mfe_analysis(files, args.output, genetic_code_id, status_queue, gene_list, args.mfe_region)
+            initiation_mfe_analysis(files, args.output, genetic_code_id, status_queue, gene_list, args.mfe_region, palette=args.palette)
 
         elif args.analysis == 18:
             list_1 = read_gene_list(args.group1)
@@ -314,7 +350,7 @@ AVAILABLE ANALYSES (-a / --analysis):
             if not list_1 or not list_2:
                 print("[!] For Analysis 18, it is mandatory to provide --group1 and --group2.")
                 sys.exit(1)
-            two_groups_comparative_analysis(files, args.output, genetic_code_id, status_queue, list_1, list_2)
+            two_groups_comparative_analysis(files, args.output, genetic_code_id, status_queue, list_1, list_2, palette=args.palette)
 
         elif args.analysis == 19:
             if not args.expr_file:
@@ -333,7 +369,7 @@ AVAILABLE ANALYSES (-a / --analysis):
             
             expression_correlation_analysis(
                 files, args.output, genetic_code_id, status_queue, gene_list, 
-                expression_data=df_expr, gene_col=args.expr_gene, expr_col=args.expr_val
+                expression_data=df_expr, gene_col=args.expr_gene, expr_col=args.expr_val, palette=args.palette
             )
 
         else:
