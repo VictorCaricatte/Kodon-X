@@ -35,7 +35,7 @@ def _calculate_mfe_for_sequences(sequences, mfe_region_length):
             
     return pd.DataFrame(mfe_results)
 
-def initiation_mfe_analysis(file_list, output_folder, genetic_code_id, status_queue, gene_list=None, mfe_region_length=50):
+def initiation_mfe_analysis(file_list, output_folder, genetic_code_id, status_queue, gene_list=None, mfe_region_length=50, palette='viridis'):
     print(f"\n=== INITIATION MFE ANALYSIS (5' UTR) ===")
     print(f"  Parameters: Region = First {mfe_region_length}bp")
     
@@ -77,28 +77,62 @@ def initiation_mfe_analysis(file_list, output_folder, genetic_code_id, status_qu
     df_plot_long = pd.concat(all_results_long).dropna()
     df_plot_long.to_csv(os.path.join(output_folder, 'mfe_data_per_gene.csv'), sep=';', index=False)
     
-    print("  Generating MFE Box Plot...")
-    status_queue.put(("progress", 90))
-    plt.figure(figsize=(max(10, len(all_seqs_by_species)*1.5), 8))
-    
-    sns.boxplot(x='species', y='mfe', data=df_plot_long, palette="coolwarm")
-    sns.stripplot(x='species', y='mfe', data=df_plot_long, color=".25", size=2, alpha=0.2)
-    
-    plt.title(f"MFE Distribution (Minimum Free Energy) - 5' Region ({mfe_region_length}bp)", fontsize=16)
-    plt.ylabel('MFE (kcal/mol) - (More negative = more stable/closed)')
-    plt.xlabel('Species')
-    plt.xticks(rotation=45, ha='right')
-    plt.grid(axis='y', linestyle='--', alpha=0.5)
-    plt.tight_layout()
-    
-    output_path = os.path.join(output_folder, 'mfe_5prime_comparative_boxplot.png')
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    plt.close()
-    
-    print(f"\n✅ MFE Chart saved in: {output_path}")
-    status_queue.put(("image_ready", (output_path, "MFE Analysis (5' UTR)")))
+    status_queue.put(("progress", 80))
 
-def two_groups_comparative_analysis(file_list, output_folder, genetic_code_id, status_queue, gene_list_1, gene_list_2):
+    try:
+        print("  Generating Chart 1: MFE Box Plot...")
+        plt.figure(figsize=(max(12, len(all_seqs_by_species)*1.5), 8))
+        sns.boxplot(x='species', y='mfe', data=df_plot_long, palette=palette, showfliers=False)
+        plt.title(f"1. MFE Distribution (Minimum Free Energy) - 5' Region ({mfe_region_length}bp)", fontsize=16)
+        plt.ylabel('MFE (kcal/mol)\n(More negative = more stable/structured)')
+        plt.xlabel('Species')
+        plt.xticks(rotation=45, ha='right')
+        plt.grid(axis='y', linestyle='--', alpha=0.5)
+        plt.tight_layout()
+        
+        plot_path1 = os.path.join(output_folder, 'mfe_1_comparative_boxplot.png')
+        plt.savefig(plot_path1, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path1, "1. MFE Boxplot (5' Region)")))
+    except Exception as e:
+        print(f"  ❌ Error generating MFE Boxplot: {e}")
+
+    try:
+        print("  Generating Chart 2: MFE KDE Density...")
+        plt.figure(figsize=(12, 8))
+        sns.kdeplot(x='mfe', hue='species', data=df_plot_long, palette=palette, fill=True, common_norm=False, alpha=0.4)
+        plt.title(f"2. Density Distribution of MFE Values ({mfe_region_length}bp)", fontsize=16)
+        plt.xlabel('Minimum Free Energy - MFE (kcal/mol)')
+        plt.ylabel('Density')
+        plt.grid(alpha=0.3)
+        plt.tight_layout()
+        
+        plot_path2 = os.path.join(output_folder, 'mfe_2_density_kde.png')
+        plt.savefig(plot_path2, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path2, "2. MFE Density (KDE)")))
+    except Exception as e:
+        print(f"  ❌ Error generating MFE KDE: {e}")
+
+    try:
+        print("  Generating Chart 3: MFE Violin Plot...")
+        plt.figure(figsize=(max(12, len(all_seqs_by_species)*1.5), 8))
+        sns.violinplot(x='species', y='mfe', data=df_plot_long, palette=palette, inner='quartile')
+        plt.title(f"3. Violin Plot of MFE Distributions ({mfe_region_length}bp)", fontsize=16)
+        plt.xlabel('Species')
+        plt.ylabel('MFE (kcal/mol)')
+        plt.xticks(rotation=45, ha='right')
+        plt.grid(axis='y', alpha=0.3)
+        plt.tight_layout()
+        
+        plot_path3 = os.path.join(output_folder, 'mfe_3_violinplot.png')
+        plt.savefig(plot_path3, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path3, "3. MFE Violin Plot")))
+    except Exception as e:
+        print(f"  ❌ Error generating MFE Violin Plot: {e}")
+
+def two_groups_comparative_analysis(file_list, output_folder, genetic_code_id, status_queue, gene_list_1, gene_list_2, palette='viridis'):
     print(f"\n=== COMPARATIVE ANALYSIS OF TWO GROUPS ===")
     print(f"  Group 1: {len(gene_list_1)} genes")
     print(f"  Group 2: {len(gene_list_2)} genes")
@@ -156,7 +190,6 @@ def two_groups_comparative_analysis(file_list, output_folder, genetic_code_id, s
     df_g2 = pd.DataFrame(all_results_g2)
     
     print("\n--- Statistical Results (Mann-Whitney U) ---")
-    
     metrics_to_test = ['enc', 'gc3', 'cai']
     p_values = {}
     for metric in metrics_to_test:
@@ -178,47 +211,108 @@ def two_groups_comparative_analysis(file_list, output_folder, genetic_code_id, s
     ]
     
     try:
-        chi2, p, dof, expected = chi2_contingency(table)
-        print(f"  Chi-Square (Total Counts): X²={chi2:.2f}, p-value = {p:.4e}, DoF={dof}")
+        chi2, p_chi, dof, expected = chi2_contingency(table)
+        print(f"  Chi-Square (Total Counts): X²={chi2:.2f}, p-value = {p_chi:.4e}, DoF={dof}")
     except ValueError as e:
         print(f"  Chi-Square Error: {e} (probably low counts)")
-        p_values['chi2'] = np.nan
+        p_chi = np.nan
         
-    print("\n  Generating comparative box plots...")
     status_queue.put(("progress", 80))
-    
     df_g1['group'] = 'Group 1'
     df_g2['group'] = 'Group 2'
     df_plot = pd.concat([df_g1, df_g2])
-    
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 8))
-    
-    sns.boxplot(x='group', y='enc', data=df_plot, ax=ax1, palette="Set2")
-    sns.stripplot(x='group', y='enc', data=df_plot, ax=ax1, color=".25", size=3, alpha=0.3)
-    ax1.set_title(f"ENC (p = {p_values.get('enc', 'N/A'):.2e})", fontsize=14)
-    ax1.set_xlabel("")
-    
-    sns.boxplot(x='group', y='gc3', data=df_plot, ax=ax2, palette="Set2")
-    sns.stripplot(x='group', y='gc3', data=df_plot, ax=ax2, color=".25", size=3, alpha=0.3)
-    ax2.set_title(f"GC3 (p = {p_values.get('gc3', 'N/A'):.2e})", fontsize=14)
-    ax2.set_xlabel("")
-    
-    sns.boxplot(x='group', y='cai', data=df_plot, ax=ax3, palette="Set2")
-    sns.stripplot(x='group', y='cai', data=df_plot, ax=ax3, color=".25", size=3, alpha=0.3)
-    ax3.set_title(f"CAI (p = {p_values.get('cai', 'N/A'):.2e})", fontsize=14)
-    ax3.set_xlabel("")
-    
-    plt.suptitle(f"Group Comparison (G1: {len(df_g1)} genes, G2: {len(df_g2)} genes)", fontsize=18)
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    
-    output_path = os.path.join(output_folder, 'group_comparison_boxplot.png')
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    plt.close()
-    
-    print(f"\n✅ Group Comparison Chart saved in: {output_path}")
-    status_queue.put(("image_ready", (output_path, "Gene Group Comparison")))
 
-def expression_correlation_analysis(file_list, output_folder, genetic_code_id, status_queue, gene_list, expression_data, gene_col, expr_col):
+    try:
+        print("  Generating Chart 1: Group Boxplots...")
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 8))
+        
+        sns.boxplot(x='group', y='enc', data=df_plot, ax=ax1, palette=palette, showfliers=False)
+        ax1.set_title(f"ENC (p = {p_values.get('enc', np.nan):.2e})", fontsize=14)
+        ax1.set_xlabel("")
+        
+        sns.boxplot(x='group', y='gc3', data=df_plot, ax=ax2, palette=palette, showfliers=False)
+        ax2.set_title(f"GC3 (p = {p_values.get('gc3', np.nan):.2e})", fontsize=14)
+        ax2.set_xlabel("")
+        
+        sns.boxplot(x='group', y='cai', data=df_plot, ax=ax3, palette=palette, showfliers=False)
+        ax3.set_title(f"CAI (p = {p_values.get('cai', np.nan):.2e})", fontsize=14)
+        ax3.set_xlabel("")
+        
+        plt.suptitle(f"1. Group Comparison Metrics (G1: {len(df_g1)} genes, G2: {len(df_g2)} genes)", fontsize=18)
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        
+        plot_path1 = os.path.join(output_folder, 'group_1_boxplots.png')
+        plt.savefig(plot_path1, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path1, "1. Group Metrics Boxplots")))
+    except Exception as e:
+        print(f"  ❌ Error: {e}")
+
+    try:
+        print("  Generating Chart 2: KDE Densities...")
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 6))
+        
+        sns.kdeplot(x='enc', hue='group', data=df_plot, ax=ax1, palette=palette, fill=True, common_norm=False)
+        ax1.set_title("ENC Density", fontsize=14)
+        
+        sns.kdeplot(x='gc3', hue='group', data=df_plot, ax=ax2, palette=palette, fill=True, common_norm=False)
+        ax2.set_title("GC3 Density", fontsize=14)
+        
+        sns.kdeplot(x='cai', hue='group', data=df_plot, ax=ax3, palette=palette, fill=True, common_norm=False)
+        ax3.set_title("CAI Density", fontsize=14)
+        
+        plt.suptitle("2. Density Distributions (KDE) - Group 1 vs Group 2", fontsize=18)
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        
+        plot_path2 = os.path.join(output_folder, 'group_2_kde_densities.png')
+        plt.savefig(plot_path2, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path2, "2. Group Metrics KDE Densities")))
+    except Exception as e:
+        print(f"  ❌ Error: {e}")
+
+    try:
+        print("  Generating Chart 3: GC3 vs ENC Scatter...")
+        plt.figure(figsize=(10, 8))
+        sns.scatterplot(x='gc3', y='enc', hue='group', data=df_plot, palette=palette, alpha=0.7, s=50, edgecolor='k')
+        plt.title("3. GC3 vs ENC Space by Gene Group", fontsize=16)
+        plt.xlabel("GC3 (%)")
+        plt.ylabel("Effective Number of Codons (ENC)")
+        plt.grid(alpha=0.3)
+        plt.legend(title='Groups')
+        plt.tight_layout()
+        
+        plot_path3 = os.path.join(output_folder, 'group_3_gc3_vs_enc_scatter.png')
+        plt.savefig(plot_path3, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path3, "3. GC3 vs ENC Scatter by Group")))
+    except Exception as e:
+        print(f"  ❌ Error: {e}")
+
+    try:
+        print("  Generating Chart 4: Group Means Barplot...")
+        df_melt_metrics = df_plot.melt(id_vars='group', value_vars=['enc', 'gc3', 'cai'], 
+                                       var_name='Metric', value_name='Value')
+        
+        fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+        for i, metric in enumerate(['enc', 'gc3', 'cai']):
+            sns.barplot(x='group', y='Value', data=df_melt_metrics[df_melt_metrics['Metric'] == metric], 
+                        ax=axes[i], capsize=.1, errorbar='sd', palette=palette)
+            axes[i].set_title(f"Average {metric.upper()}", fontsize=14)
+            axes[i].set_xlabel("")
+            axes[i].grid(axis='y', alpha=0.3)
+            
+        plt.suptitle("4. Average Values (with Standard Deviation) per Metric", fontsize=18)
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        
+        plot_path4 = os.path.join(output_folder, 'group_4_means_barplot.png')
+        plt.savefig(plot_path4, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path4, "4. Group Means Barplot")))
+    except Exception as e:
+        print(f"  ❌ Error: {e}")
+
+def expression_correlation_analysis(file_list, output_folder, genetic_code_id, status_queue, gene_list, expression_data, gene_col, expr_col, palette='viridis'):
     print(f"\n=== CORRELATION WITH EXPRESSION ANALYSIS ===")
     print(f"  Expression File: {len(expression_data)} rows")
     print(f"  Gene Column: '{gene_col}', Expression Column: '{expr_col}'")
@@ -307,38 +401,92 @@ def expression_correlation_analysis(file_list, output_folder, genetic_code_id, s
     print(f"  ✅ {len(df_merged)} genes with metric and expression data found.")
     
     print("\n--- Statistical Results (Spearman Correlation) ---")
-    
     corr_cai, p_cai = spearmanr(df_merged['cai'].dropna(), df_merged['expr_log'].dropna())
     print(f"  CAI vs Expression (log10): Rho = {corr_cai:.3f}, p-value = {p_cai:.4e}")
     
     corr_enc, p_enc = spearmanr(df_merged['enc'].dropna(), df_merged['expr_log'].dropna())
     print(f"  ENC vs Expression (log10): Rho = {corr_enc:.3f}, p-value = {p_enc:.4e}")
     
-    print("\n  Generating correlation plots...")
     status_queue.put(("progress", 80))
-    
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 8))
-    
-    sns.regplot(x='expr_log', y='cai', data=df_merged, ax=ax1,
-                scatter_kws={'alpha': 0.2, 's': 10}, 
-                line_kws={'color': 'red'})
-    ax1.set_title(f"CAI vs Expression (log10)\nSpearman Rho = {corr_cai:.3f} (p = {p_cai:.2e})", fontsize=14)
-    ax1.set_xlabel(f"Expression (log10 {expr_col})")
-    ax1.set_ylabel("CAI")
-    
-    sns.regplot(x='expr_log', y='enc', data=df_merged, ax=ax2,
-                scatter_kws={'alpha': 0.2, 's': 10}, 
-                line_kws={'color': 'blue'})
-    ax2.set_title(f"ENC vs Expression (log10)\nSpearman Rho = {corr_enc:.3f} (p = {p_enc:.2e})", fontsize=14)
-    ax2.set_xlabel(f"Expression (log10 {expr_col})")
-    ax2.set_ylabel("ENC")
-    
-    plt.suptitle(f"Correlation with Expression (N = {len(df_merged)} genes)", fontsize=18)
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    
-    output_path = os.path.join(output_folder, 'expression_correlation.png')
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    plt.close()
-    
-    print(f"\n✅ Expression Correlation Chart saved in: {output_path}")
-    status_queue.put(("image_ready", (output_path, "Correlation with Expression")))
+
+    try:
+        plot_col1 = sns.color_palette(palette)[-1]
+        plot_col2 = sns.color_palette(palette)[0]
+    except:
+        plot_col1 = 'red'
+        plot_col2 = 'blue'
+
+    try:
+        print("  Generating Chart 1: CAI vs Expression Scatter...")
+        plt.figure(figsize=(10, 8))
+        sns.regplot(x='expr_log', y='cai', data=df_merged, 
+                    scatter_kws={'alpha': 0.3, 's': 30, 'edgecolor': 'w'}, 
+                    line_kws={'color': plot_col1, 'linewidth': 2})
+        plt.title(f"1. CAI vs Gene Expression (log10)\nSpearman Rho = {corr_cai:.3f} (p = {p_cai:.2e})", fontsize=16)
+        plt.xlabel(f"Expression (log10 {expr_col})")
+        plt.ylabel("Codon Adaptation Index (CAI)")
+        plt.grid(alpha=0.3)
+        plt.tight_layout()
+        
+        plot_path1 = os.path.join(output_folder, 'expr_1_cai_scatter_regression.png')
+        plt.savefig(plot_path1, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path1, "1. CAI vs Expression Regression")))
+    except Exception as e:
+        print(f"  ❌ Error: {e}")
+
+    try:
+        print("  Generating Chart 2: ENC vs Expression Scatter...")
+        plt.figure(figsize=(10, 8))
+        sns.regplot(x='expr_log', y='enc', data=df_merged, 
+                    scatter_kws={'alpha': 0.3, 's': 30, 'edgecolor': 'w'}, 
+                    line_kws={'color': plot_col2, 'linewidth': 2})
+        plt.title(f"2. ENC vs Gene Expression (log10)\nSpearman Rho = {corr_enc:.3f} (p = {p_enc:.2e})", fontsize=16)
+        plt.xlabel(f"Expression (log10 {expr_col})")
+        plt.ylabel("Effective Number of Codons (ENC)")
+        plt.grid(alpha=0.3)
+        plt.tight_layout()
+        
+        plot_path2 = os.path.join(output_folder, 'expr_2_enc_scatter_regression.png')
+        plt.savefig(plot_path2, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path2, "2. ENC vs Expression Regression")))
+    except Exception as e:
+        print(f"  ❌ Error: {e}")
+
+    try:
+        print("  Generating Chart 3: CAI vs Expression Hexbin Density...")
+        plt.figure(figsize=(10, 8))
+        plt.hexbin(df_merged['expr_log'], df_merged['cai'], gridsize=40, cmap=palette, mincnt=1)
+        cb = plt.colorbar(label='Number of Genes (Density)')
+        plt.title("3. 2D Density Map (Hexbin) of CAI vs Expression", fontsize=16)
+        plt.xlabel(f"Expression (log10 {expr_col})")
+        plt.ylabel("Codon Adaptation Index (CAI)")
+        plt.grid(alpha=0.2)
+        plt.tight_layout()
+        
+        plot_path3 = os.path.join(output_folder, 'expr_3_cai_hexbin_density.png')
+        plt.savefig(plot_path3, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path3, "3. Expression Hexbin Density")))
+    except Exception as e:
+        print(f"  ❌ Error: {e}")
+
+    try:
+        print("  Generating Chart 4: Expression by CAI Quartiles...")
+        df_merged['CAI_Quartile'] = pd.qcut(df_merged['cai'], 4, labels=['Q1 (Lowest Bias)', 'Q2', 'Q3', 'Q4 (Highest Bias)'])
+        
+        plt.figure(figsize=(12, 8))
+        sns.boxplot(x='CAI_Quartile', y='expr_log', data=df_merged, palette=palette, showfliers=False)
+        plt.title("4. Gene Expression Levels Distributed by CAI Quartiles", fontsize=16)
+        plt.xlabel("CAI Quartiles")
+        plt.ylabel(f"Expression (log10 {expr_col})")
+        plt.grid(axis='y', alpha=0.3)
+        plt.tight_layout()
+        
+        plot_path4 = os.path.join(output_folder, 'expr_4_quartiles_boxplot.png')
+        plt.savefig(plot_path4, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path4, "4. Expression by CAI Quartiles")))
+    except Exception as e:
+        print(f"  ❌ Error: {e}")
