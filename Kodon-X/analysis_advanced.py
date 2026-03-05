@@ -53,7 +53,7 @@ def calculate_codon_pair_bias(sequences, genetic_code_id):
     df_cps = pd.DataFrame(cps_matrix, index=non_stop_codons, columns=non_stop_codons)
     return df_cps
 
-def codon_pair_bias_analysis(file_list, output_folder, genetic_code_id, status_queue, gene_list=None):
+def codon_pair_bias_analysis(file_list, output_folder, genetic_code_id, status_queue, gene_list=None, palette='viridis'):
     print(f"\n=== CODON PAIR BIAS ANALYSIS (CPB) ===")
     all_seqs_by_species = extract_cds_sequences(file_list, status_queue, gene_list)
     
@@ -76,22 +76,88 @@ def codon_pair_bias_analysis(file_list, output_folder, genetic_code_id, status_q
         df_cps.to_csv(csv_path, sep=';', decimal='.')
         print(f"  ✅ CPB Matrix saved in: {csv_path}")
         
-        print("  Generating CPB Heatmap...")
-        plt.figure(figsize=(24, 20))
-        sns.heatmap(df_cps, cmap="coolwarm", center=0, annot=False, 
-                    cbar_kws={'label': 'Codon Pair Score (log(Obs/Exp))'})
-        plt.title(f"Codon Pair Bias (CPB) - {species_name}", fontsize=18)
-        plt.xlabel("Second Codon", fontsize=12)
-        plt.ylabel("First Codon", fontsize=12)
-        plt.tight_layout()
-        
-        plot_path = os.path.join(output_folder, f"cpb_heatmap_{species_name}.png")
-        plt.savefig(plot_path, dpi=100, bbox_inches="tight") 
-        plt.close()
-        
-        print(f"  ✅ CPB Heatmap saved in: {plot_path}")
-        status_queue.put(("image_ready", (plot_path, f"CPB - {species_name}")))
-        status_queue.put(("progress", int(40 + (i / len(all_seqs_by_species)) * 50)))
+        try:
+            print("  Generating Chart 1: CPB Heatmap...")
+            plt.figure(figsize=(24, 20))
+            sns.heatmap(df_cps, cmap=palette, center=0, annot=False, 
+                        cbar_kws={'label': 'Codon Pair Score (log(Obs/Exp))'})
+            plt.title(f"1. Codon Pair Bias Heatmap (CPB) - {species_name}", fontsize=18)
+            plt.xlabel("Second Codon", fontsize=12)
+            plt.ylabel("First Codon", fontsize=12)
+            plt.tight_layout()
+            
+            plot_path1 = os.path.join(output_folder, f"cpb_1_heatmap_{species_name}.png")
+            plt.savefig(plot_path1, dpi=100, bbox_inches="tight") 
+            plt.close()
+            status_queue.put(("image_ready", (plot_path1, f"1. CPB Heatmap - {species_name}")))
+        except Exception as e:
+            print(f"  ❌ Error generating CPB Heatmap: {e}")
+
+        df_cps_long = df_cps.unstack().reset_index()
+        df_cps_long.columns = ['Codon_1', 'Codon_2', 'CPS']
+        df_cps_long['Pair'] = df_cps_long['Codon_1'] + "-" + df_cps_long['Codon_2']
+
+        try:
+            plot_col = sns.color_palette(palette)[0]
+        except:
+            plot_col = 'purple'
+
+        try:
+            print("  Generating Chart 2: CPS Distribution Histogram...")
+            plt.figure(figsize=(10, 6))
+            sns.histplot(df_cps_long['CPS'], bins=60, kde=True, color=plot_col, edgecolor='black')
+            plt.axvline(0, color='red', linestyle='--', label='Neutral (Obs = Exp)')
+            plt.title(f"2. Distribution of Codon Pair Scores (CPS) - {species_name}", fontsize=14)
+            plt.xlabel("Codon Pair Score (CPS)")
+            plt.ylabel("Frequency (Number of Pairs)")
+            plt.legend()
+            plt.grid(alpha=0.3)
+            plt.tight_layout()
+            
+            plot_path2 = os.path.join(output_folder, f"cpb_2_histogram_{species_name}.png")
+            plt.savefig(plot_path2, dpi=100, bbox_inches="tight")
+            plt.close()
+            status_queue.put(("image_ready", (plot_path2, f"2. CPS Histogram - {species_name}")))
+        except Exception as e:
+            print(f"  ❌ Error generating CPS Histogram: {e}")
+
+        try:
+            print("  Generating Chart 3: Top Overrepresented Pairs...")
+            top_overrepresented = df_cps_long.sort_values(by='CPS', ascending=False).head(20)
+            plt.figure(figsize=(12, 8))
+            sns.barplot(x='CPS', y='Pair', data=top_overrepresented, palette=palette)
+            plt.title(f"3. Top 20 Most Overrepresented Codon Pairs - {species_name}", fontsize=14)
+            plt.xlabel("Codon Pair Score (CPS)")
+            plt.ylabel("Codon Pair")
+            plt.grid(axis='x', alpha=0.3)
+            plt.tight_layout()
+            
+            plot_path3 = os.path.join(output_folder, f"cpb_3_overrepresented_{species_name}.png")
+            plt.savefig(plot_path3, dpi=100, bbox_inches="tight")
+            plt.close()
+            status_queue.put(("image_ready", (plot_path3, f"3. Top Overrepresented - {species_name}")))
+        except Exception as e:
+            print(f"  ❌ Error generating Overrepresented pairs chart: {e}")
+
+        try:
+            print("  Generating Chart 4: Top Underrepresented Pairs...")
+            top_underrepresented = df_cps_long.sort_values(by='CPS', ascending=True).head(20)
+            plt.figure(figsize=(12, 8))
+            sns.barplot(x='CPS', y='Pair', data=top_underrepresented, palette=palette)
+            plt.title(f"4. Top 20 Most Underrepresented Codon Pairs - {species_name}", fontsize=14)
+            plt.xlabel("Codon Pair Score (CPS)")
+            plt.ylabel("Codon Pair")
+            plt.grid(axis='x', alpha=0.3)
+            plt.tight_layout()
+            
+            plot_path4 = os.path.join(output_folder, f"cpb_4_underrepresented_{species_name}.png")
+            plt.savefig(plot_path4, dpi=100, bbox_inches="tight")
+            plt.close()
+            status_queue.put(("image_ready", (plot_path4, f"4. Top Underrepresented - {species_name}")))
+        except Exception as e:
+            print(f"  ❌ Error generating Underrepresented pairs chart: {e}")
+
+        status_queue.put(("progress", int(40 + ((i + 1) / len(all_seqs_by_species)) * 50)))
 
 def calculate_gravy_aromo(sequences, genetic_code_id):
     codon_map = GENETIC_CODE_TABLES.get(genetic_code_id, GENETIC_CODE_TABLES[1])
@@ -129,7 +195,7 @@ def calculate_gravy_aromo(sequences, genetic_code_id):
         
     return pd.DataFrame(results)
 
-def gravy_aromo_analysis(file_list, output_folder, genetic_code_id, status_queue, gene_list=None):
+def gravy_aromo_analysis(file_list, output_folder, genetic_code_id, status_queue, gene_list=None, palette='viridis'):
     print(f"\n=== PHYSICOCHEMICAL ANALYSIS (GRAVY & AROMO) ===")
     all_seqs_by_species = extract_cds_sequences(file_list, status_queue, gene_list)
     
@@ -159,33 +225,87 @@ def gravy_aromo_analysis(file_list, output_folder, genetic_code_id, status_queue
         return
         
     df_plot_long = pd.concat(all_results_long)
-    print("  Generating comparative Box Plots...")
     status_queue.put(("progress", 80))
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
     
-    sns.violinplot(x='species', y='gravy', data=df_plot_long, ax=ax1, palette="coolwarm", inner="quartile")
-    ax1.set_title("GRAVY Distribution (Hydropathicity)", fontweight='bold')
-    ax1.set_ylabel("GRAVY Score")
-    ax1.set_xlabel("Species")
-    ax1.tick_params(axis='x', rotation=45)
-    
-    sns.violinplot(x='species', y='aromo', data=df_plot_long, ax=ax2, palette="viridis", inner="quartile")
-    ax2.set_title("Aromaticity Distribution", fontweight='bold')
-    ax2.set_ylabel("Aromo Score (% F, Y, W)")
-    ax2.set_xlabel("Species")
-    ax2.tick_params(axis='x', rotation=45)
-    
-    plt.suptitle("Comparative Physicochemical Analysis", fontsize=16, fontweight='bold')
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    
-    plot_path = os.path.join(output_folder, "gravy_aromo_comparative.png")
-    plt.savefig(plot_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    
-    print(f"  ✅ Comparative chart saved in: {plot_path}")
-    status_queue.put(("image_ready", (plot_path, "GRAVY & Aromo Analysis"))) 
+    try:
+        print("  Generating Chart 1: GRAVY vs Aromo Scatter Plot...")
+        plt.figure(figsize=(14, 10))
+        sns.scatterplot(data=df_plot_long, x='gravy', y='aromo', hue='species', 
+                        palette=palette, alpha=0.6, s=30, edgecolor='w', linewidth=0.2)
+        
+        plt.title("1. Physicochemical Space (GRAVY vs Aromaticity)", fontsize=16, fontweight='bold')
+        plt.xlabel("GRAVY Score (Hydropathicity)", fontsize=12)
+        plt.ylabel("Aromaticity Score (% F, Y, W)", fontsize=12)
+        
+        plt.axhline(df_plot_long['aromo'].mean(), color='grey', linestyle='--', linewidth=1, alpha=0.5)
+        plt.axvline(df_plot_long['gravy'].mean(), color='grey', linestyle='--', linewidth=1, alpha=0.5)
+        
+        plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', title="Species", borderaxespad=0)
+        plt.grid(alpha=0.3)
+        plt.tight_layout()
+        
+        plot_path1 = os.path.join(output_folder, "gravy_aromo_1_scatter.png")
+        plt.savefig(plot_path1, dpi=150, bbox_inches="tight")
+        plt.close()
+        status_queue.put(("image_ready", (plot_path1, "1. GRAVY & Aromo Scatter Space"))) 
+    except Exception as e:
+        print(f"  ❌ Error generating Scatter Plot: {e}")
 
-def dinucleotide_composition_analysis(file_list, output_folder, status_queue):
+    try:
+        print("  Generating Chart 2: GRAVY Boxplot...")
+        plt.figure(figsize=(14, 6))
+        sns.boxplot(x='species', y='gravy', data=df_plot_long, palette=palette, showfliers=False)
+        plt.title("2. GRAVY Score Distribution by Species", fontsize=16)
+        plt.ylabel("GRAVY Score")
+        plt.xlabel("Species")
+        plt.xticks(rotation=45, ha='right')
+        plt.grid(axis='y', alpha=0.3)
+        plt.tight_layout()
+        
+        plot_path2 = os.path.join(output_folder, "gravy_aromo_2_boxplot_gravy.png")
+        plt.savefig(plot_path2, dpi=150, bbox_inches="tight")
+        plt.close()
+        status_queue.put(("image_ready", (plot_path2, "2. GRAVY Boxplot by Species")))
+    except Exception as e:
+        print(f"  ❌ Error generating GRAVY Boxplot: {e}")
+
+    try:
+        print("  Generating Chart 3: Aromaticity Boxplot...")
+        plt.figure(figsize=(14, 6))
+        sns.boxplot(x='species', y='aromo', data=df_plot_long, palette=palette, showfliers=False)
+        plt.title("3. Aromaticity Score Distribution by Species", fontsize=16)
+        plt.ylabel("Aromaticity Score (% F, Y, W)")
+        plt.xlabel("Species")
+        plt.xticks(rotation=45, ha='right')
+        plt.grid(axis='y', alpha=0.3)
+        plt.tight_layout()
+        
+        plot_path3 = os.path.join(output_folder, "gravy_aromo_3_boxplot_aromo.png")
+        plt.savefig(plot_path3, dpi=150, bbox_inches="tight")
+        plt.close()
+        status_queue.put(("image_ready", (plot_path3, "3. Aromo Boxplot by Species")))
+    except Exception as e:
+        print(f"  ❌ Error generating Aromo Boxplot: {e}")
+
+    try:
+        print("  Generating Chart 4: Hexbin Density Map...")
+        plt.figure(figsize=(12, 10))
+        plt.hexbin(df_plot_long['gravy'], df_plot_long['aromo'], gridsize=40, cmap=palette, mincnt=1)
+        cb = plt.colorbar(label='Number of Genes (Density)')
+        plt.title("4. Density Map (Hexbin) of GRAVY vs Aromaticity (All Species)", fontsize=16)
+        plt.xlabel("GRAVY Score")
+        plt.ylabel("Aromaticity Score")
+        plt.grid(alpha=0.3)
+        plt.tight_layout()
+        
+        plot_path4 = os.path.join(output_folder, "gravy_aromo_4_hexbin_density.png")
+        plt.savefig(plot_path4, dpi=150, bbox_inches="tight")
+        plt.close()
+        status_queue.put(("image_ready", (plot_path4, "4. GRAVY & Aromo Hexbin Density")))
+    except Exception as e:
+        print(f"  ❌ Error generating Hexbin Plot: {e}")
+
+def dinucleotide_composition_analysis(file_list, output_folder, status_queue, palette='viridis'):
     print(f"\n=== DINUCLEOTIDE COMPOSITION ANALYSIS ===")
     all_results = {}
     total_files = len(file_list)
@@ -228,22 +348,66 @@ def dinucleotide_composition_analysis(file_list, output_folder, status_queue):
     df_dinu.to_csv(csv_path, sep=';', decimal='.')
     print(f"  ✅ Dinucleotide composition table saved in: {csv_path}")
 
-    print("  Generating Dinucleotide Heatmap...")
-    status_queue.put(("progress", 90))
-    plt.figure(figsize=(14, max(8, len(df_dinu) * 0.5)))
-    sns.heatmap(df_dinu, annot=True, fmt=".2f", cmap="viridis", linewidths=0.5,
-                cbar_kws={'label': 'Frequency (%)'})
-    plt.title("Dinucleotide Composition (%)", fontsize=16)
-    plt.xlabel("Dinucleotide")
-    plt.ylabel("Species")
-    plt.tight_layout()
-    
-    plot_path = os.path.join(output_folder, 'dinucleotide_composition_heatmap.png')
-    plt.savefig(plot_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    
-    print(f"  ✅ Heatmap saved in: {plot_path}")
-    status_queue.put(("image_ready", (plot_path, "Dinucleotide Composition")))
+    try:
+        print("  Generating Chart 1: Dinucleotide Heatmap...")
+        status_queue.put(("progress", 90))
+        plt.figure(figsize=(16, max(8, len(df_dinu) * 0.5)))
+        sns.heatmap(df_dinu, annot=True, fmt=".2f", cmap=palette, linewidths=0.5,
+                    cbar_kws={'label': 'Frequency (%)'})
+        plt.title("1. Dinucleotide Composition Frequencies (%)", fontsize=16)
+        plt.xlabel("Dinucleotide")
+        plt.ylabel("Species")
+        plt.tight_layout()
+        
+        plot_path1 = os.path.join(output_folder, 'dinucleotide_1_heatmap.png')
+        plt.savefig(plot_path1, dpi=150, bbox_inches="tight")
+        plt.close()
+        status_queue.put(("image_ready", (plot_path1, "1. Dinucleotide Heatmap")))
+    except Exception as e:
+        print(f"  ❌ Error generating Heatmap: {e}")
+
+    try:
+        print("  Generating Chart 2: Dinucleotide Variance Boxplot...")
+        plt.figure(figsize=(16, 6))
+        sns.boxplot(data=df_dinu, palette=palette, showfliers=False)
+        plt.title("2. Variation of Dinucleotide Frequencies Across All Species", fontsize=16)
+        plt.xlabel("Dinucleotide Pair")
+        plt.ylabel("Frequency (%)")
+        plt.grid(axis='y', alpha=0.3)
+        plt.tight_layout()
+        
+        plot_path2 = os.path.join(output_folder, 'dinucleotide_2_variance_boxplot.png')
+        plt.savefig(plot_path2, dpi=150, bbox_inches="tight")
+        plt.close()
+        status_queue.put(("image_ready", (plot_path2, "2. Dinucleotide Variance Boxplot")))
+    except Exception as e:
+        print(f"  ❌ Error generating Boxplot: {e}")
+
+    try:
+        plot_col = sns.color_palette(palette)[0]
+    except:
+        plot_col = 'teal'
+
+    try:
+        print("  Generating Chart 3: Average Dinucleotide Barplot...")
+        plt.figure(figsize=(16, 6))
+        mean_freq = df_dinu.mean()
+        std_freq = df_dinu.std()
+        
+        mean_freq.plot(kind='bar', yerr=std_freq, capsize=4, color=plot_col, edgecolor='black', alpha=0.8)
+        plt.title("3. Average Global Dinucleotide Frequency (with StdDev)", fontsize=16)
+        plt.xlabel("Dinucleotide Pair")
+        plt.ylabel("Mean Frequency (%)")
+        plt.grid(axis='y', alpha=0.3)
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        
+        plot_path3 = os.path.join(output_folder, 'dinucleotide_3_mean_barplot.png')
+        plt.savefig(plot_path3, dpi=150, bbox_inches="tight")
+        plt.close()
+        status_queue.put(("image_ready", (plot_path3, "3. Average Dinucleotide Barplot")))
+    except Exception as e:
+        print(f"  ❌ Error generating Barplot: {e}")
 
 def calculate_pr2_per_gene(sequences, genetic_code_id):
     genetic_code = GENETIC_CODE_TABLES.get(genetic_code_id, GENETIC_CODE_TABLES[1])
@@ -268,12 +432,20 @@ def calculate_pr2_per_gene(sequences, genetic_code_id):
         a3_frac = (counts['A3'] / a3_plus_t3) if a3_plus_t3 > 0 else np.nan
         g3_frac = (counts['G3'] / g3_plus_c3) if g3_plus_c3 > 0 else np.nan
         
+        at_skew = (counts['A3'] - counts['T3']) / a3_plus_t3 if a3_plus_t3 > 0 else np.nan
+        gc_skew = (counts['G3'] - counts['C3']) / g3_plus_c3 if g3_plus_c3 > 0 else np.nan
+        
         if not (np.isnan(a3_frac) or np.isnan(g3_frac)):
-            results.append({'A3_frac': a3_frac, 'G3_frac': g3_frac})
+            results.append({
+                'A3_frac': a3_frac, 
+                'G3_frac': g3_frac,
+                'AT_skew': at_skew,
+                'GC_skew': gc_skew
+            })
 
     return pd.DataFrame(results)
 
-def pr2_plot_analysis(file_list, output_folder, genetic_code_id, status_queue, gene_list=None):
+def pr2_plot_analysis(file_list, output_folder, genetic_code_id, status_queue, gene_list=None, palette='viridis'):
     print(f"\n=== PR2 PARITY PLOT ANALYSIS ===")
     all_seqs_by_species = extract_cds_sequences(file_list, status_queue, gene_list)
     
@@ -302,29 +474,100 @@ def pr2_plot_analysis(file_list, output_folder, genetic_code_id, status_queue, g
     df_plot_long = pd.concat(all_results_long).dropna()
     df_plot_long.to_csv(os.path.join(output_folder, 'pr2_plot_data_per_gene.csv'), sep=';', index=False)
     
-    print("  Generating PR2 Plot...")
     status_queue.put(("progress", 80))
-    
-    plt.figure(figsize=(12, 12))
-    ax = sns.scatterplot(x='G3_frac', y='A3_frac', data=df_plot_long, hue='species', alpha=0.5, s=20)
-    
-    ax.axhline(0.5, color='black', linestyle='--', linewidth=1)
-    ax.axvline(0.5, color='black', linestyle='--', linewidth=1)
-    
-    ax.set_xlabel('G3 / (G3 + C3)', fontsize=12)
-    ax.set_ylabel('A3 / (A3 + T3)', fontsize=12)
-    ax.set_title(f'PR2 Parity Plot (3rd Position Bias)', fontsize=16)
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
-    
-    plt.tight_layout()
-    output_path = os.path.join(output_folder, 'pr2_plot.png')
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    plt.close()
-    
-    print(f"\n✅ PR2 Plot saved in: {output_path}")
-    status_queue.put(("image_ready", (output_path, "PR2 Parity Plot")))
+
+    try:
+        print("  Generating Chart 1: PR2 Scatter Plot...")
+        plt.figure(figsize=(10, 10))
+        ax = sns.scatterplot(x='G3_frac', y='A3_frac', data=df_plot_long, hue='species', palette=palette, alpha=0.5, s=20)
+        
+        ax.axhline(0.5, color='black', linestyle='--', linewidth=1)
+        ax.axvline(0.5, color='black', linestyle='--', linewidth=1)
+        
+        ax.set_xlabel('G3 / (G3 + C3)', fontsize=12)
+        ax.set_ylabel('A3 / (A3 + T3)', fontsize=12)
+        ax.set_title('1. PR2 Parity Plot (3rd Position Bias)', fontsize=16)
+        ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+        ax.legend(loc='upper left', bbox_to_anchor=(1.02, 1))
+        
+        plt.tight_layout()
+        plot_path1 = os.path.join(output_folder, 'pr2_1_scatter.png')
+        plt.savefig(plot_path1, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path1, "1. PR2 Parity Scatter")))
+    except Exception as e:
+        print(f"  ❌ Error generating Scatter Plot: {e}")
+
+    try:
+        print("  Generating Chart 2: PR2 Density KDE...")
+        plt.figure(figsize=(10, 10))
+        sns.kdeplot(x=df_plot_long['G3_frac'], y=df_plot_long['A3_frac'], cmap=palette, fill=True, thresh=0.05)
+        plt.axhline(0.5, color='black', linestyle='--', linewidth=1)
+        plt.axvline(0.5, color='black', linestyle='--', linewidth=1)
+        plt.xlabel('G3 / (G3 + C3)', fontsize=12)
+        plt.ylabel('A3 / (A3 + T3)', fontsize=12)
+        plt.title('2. PR2 Parity Plot Density (KDE)', fontsize=16)
+        plt.xlim(0, 1); plt.ylim(0, 1)
+        plt.tight_layout()
+        
+        plot_path2 = os.path.join(output_folder, 'pr2_2_kde_density.png')
+        plt.savefig(plot_path2, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path2, "2. PR2 KDE Density")))
+    except Exception as e:
+        print(f"  ❌ Error generating KDE Plot: {e}")
+
+    try:
+        print("  Generating Chart 3: AT and GC Skews Boxplot...")
+        df_skew = df_plot_long.melt(id_vars='species', value_vars=['AT_skew', 'GC_skew'], 
+                                    var_name='Skew_Type', value_name='Skew_Value')
+        plt.figure(figsize=(14, 6))
+        sns.boxplot(x='species', y='Skew_Value', hue='Skew_Type', data=df_skew, palette=palette, showfliers=False)
+        plt.axhline(0, color='red', linestyle='--', linewidth=1.5, label='Zero Skew')
+        plt.title("3. Distribution of AT and GC Skews at 3rd Position", fontsize=16)
+        plt.xlabel("Species")
+        plt.ylabel("Skew Value")
+        plt.xticks(rotation=45, ha='right')
+        plt.legend(loc='upper left', bbox_to_anchor=(1.02, 1))
+        plt.grid(axis='y', alpha=0.3)
+        plt.tight_layout()
+        
+        plot_path3 = os.path.join(output_folder, 'pr2_3_skews_boxplot.png')
+        plt.savefig(plot_path3, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path3, "3. AT/GC Skews Boxplot")))
+    except Exception as e:
+        print(f"  ❌ Error generating Skews Boxplot: {e}")
+
+    try:
+        col1 = sns.color_palette(palette)[0]
+        col2 = sns.color_palette(palette)[-1]
+    except:
+        col1, col2 = 'blue', 'orange'
+
+    try:
+        print("  Generating Chart 4: G3 and A3 Histograms...")
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+        
+        sns.histplot(df_plot_long['G3_frac'], bins=50, kde=True, ax=ax1, color=col1, edgecolor='black')
+        ax1.set_title("G3 / (G3+C3) Distribution", fontsize=14)
+        ax1.axvline(0.5, color='red', linestyle='--', linewidth=2)
+        ax1.set_xlabel("G3 Fraction")
+        
+        sns.histplot(df_plot_long['A3_frac'], bins=50, kde=True, ax=ax2, color=col2, edgecolor='black')
+        ax2.set_title("A3 / (A3+T3) Distribution", fontsize=14)
+        ax2.axvline(0.5, color='red', linestyle='--', linewidth=2)
+        ax2.set_xlabel("A3 Fraction")
+        
+        plt.suptitle("4. Independent Distributions of 3rd Position Purine Bias", fontsize=16)
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        
+        plot_path4 = os.path.join(output_folder, 'pr2_4_histograms.png')
+        plt.savefig(plot_path4, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path4, "4. G3 and A3 Histograms")))
+    except Exception as e:
+        print(f"  ❌ Error generating Histograms: {e}")
 
 def count_tRNAs(file_list, status_queue):
     print("  Analyzing tRNA genes (anticodons)...")
@@ -401,6 +644,7 @@ def calculate_wobble_W_weights(anticodon_counts, genetic_code_id, wobble_matrix)
                 continue 
             
             anticodon_base_1_raw = anticodon_5_3[0].upper().replace('T', 'U')
+            
             anticodon_base_1_mod = ANTICODON_MODIFICATION_MAP.get(anticodon_base_1_raw, anticodon_base_1_raw)
             s_ij = wobble_matrix.get((anticodon_base_1_mod, codon_base_3), 1.0)
             sum_wi += (1.0 - s_ij) * n_j
@@ -440,7 +684,7 @@ def calculate_tai_per_gene(sequences, W_values):
         
     return pd.DataFrame(results)
 
-def tai_analysis(file_list, output_folder, genetic_code_id, status_queue, gene_list=None, super_kingdom="Bacteria"):
+def tai_analysis(file_list, output_folder, genetic_code_id, status_queue, gene_list=None, super_kingdom="Bacteria", palette='viridis'):
     print(f"\n=== tRNA ADAPTATION INDEX ANALYSIS (Wobble-Weighted tAI) ===")
     wobble_rules_map = {"Bacteria": WOBBLE_MATRIX_BACTERIA, "Eukaryote": WOBBLE_MATRIX_EUKARYA}
     wobble_rules = wobble_rules_map.get(super_kingdom, WOBBLE_MATRIX_BACTERIA)
@@ -481,43 +725,89 @@ def tai_analysis(file_list, output_folder, genetic_code_id, status_queue, gene_l
     df_plot_long = pd.concat(all_results_long).dropna()
     df_plot_long.to_csv(os.path.join(output_folder, 'tAI_wobble_data_per_gene.csv'), sep=';', index=False)
     
-    print("  Generating tAI (Wobble) Box Plot...")
-    status_queue.put(("progress", 90))
-    plt.figure(figsize=(max(10, len(all_seqs_by_species)*1.5), 8))
-    
+    status_queue.put(("progress", 85))
     tAI_floor = 1.1e-9 
     df_filtered_plot = df_plot_long[df_plot_long['tAI'] > tAI_floor]
     
-    plot_title_str = f'Wobble-Weighted tAI Distribution ({super_kingdom})'
-    
-    if df_filtered_plot.empty:
-        df_to_plot = df_plot_long
-        plot_title_str += "\n(Warning: All values at minimum floor)"
-    else:
-        df_to_plot = df_filtered_plot
-        num_filtrados = len(df_plot_long) - len(df_filtered_plot)
-        if num_filtrados > 0:
-            print(f"  Info: Filtered {num_filtrados} genes from plot (tAI < {tAI_floor:.1e}).")
-            plot_title_str += f"\n(Values < {tAI_floor:.1e} filtered for clarity)"
-    
-    sns.boxplot(x='species', y='tAI', data=df_to_plot, palette="Set3")
-    sns.stripplot(x='species', y='tAI', data=df_to_plot, color=".25", size=2, alpha=0.2)
-    
-    plt.title(plot_title_str, fontsize=16)
-    plt.ylabel('tAI (Geometric Mean of W Weights)')
-    plt.xlabel('Species')
-    plt.yscale('log')
-    plt.xticks(rotation=45, ha='right')
-    plt.tight_layout()
-    
-    output_path = os.path.join(output_folder, 'tAI_wobble_comparative_boxplot.png')
-    plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    plt.close()
-    
-    print(f"\n✅ tAI (Wobble) Chart saved in: {output_path}")
-    status_queue.put(("image_ready", (output_path, "Weighted tAI Analysis (Wobble)")))
+    df_to_plot = df_filtered_plot if not df_filtered_plot.empty else df_plot_long
 
-def upstream_motifs_analysis(file_list, output_folder, status_queue, gene_list=None, upstream_dist=200, kmer_size=6):
+    try:
+        print("  Generating Chart 1: tAI Boxplot...")
+        plt.figure(figsize=(14, 8))
+        plot_title_str = f'1. Wobble-Weighted tAI Distribution ({super_kingdom})'
+        if df_filtered_plot.empty: plot_title_str += "\n(Warning: All values at minimum floor)"
+        
+        sns.boxplot(x='species', y='tAI', data=df_to_plot, palette=palette, showfliers=False)
+        plt.title(plot_title_str, fontsize=16)
+        plt.ylabel('tAI (Geometric Mean of W Weights)')
+        plt.xlabel('Species')
+        plt.yscale('log')
+        plt.xticks(rotation=45, ha='right')
+        plt.grid(axis='y', alpha=0.3)
+        plt.tight_layout()
+        
+        plot_path1 = os.path.join(output_folder, 'tai_1_comparative_boxplot.png')
+        plt.savefig(plot_path1, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path1, "1. tAI Boxplot")))
+    except Exception as e:
+        print(f"  ❌ Error: {e}")
+
+    try:
+        print("  Generating Chart 2: tAI vs Length Scatter Plot...")
+        plt.figure(figsize=(12, 8))
+        sns.scatterplot(data=df_to_plot, x='gene_length_codons', y='tAI', hue='species', palette=palette, alpha=0.5, s=20)
+        plt.title(f'2. tAI vs Gene Length ({super_kingdom})', fontsize=16)
+        plt.xlabel('Gene Length (Number of Codons)')
+        plt.ylabel('tAI')
+        plt.xscale('log'); plt.yscale('log')
+        plt.grid(alpha=0.3)
+        plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left')
+        plt.tight_layout()
+        
+        plot_path2 = os.path.join(output_folder, 'tai_2_vs_length_scatter.png')
+        plt.savefig(plot_path2, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path2, "2. tAI vs Gene Length")))
+    except Exception as e:
+        print(f"  ❌ Error: {e}")
+
+    try:
+        print("  Generating Chart 3: tAI KDE Density...")
+        plt.figure(figsize=(12, 8))
+        sns.kdeplot(data=df_to_plot, x='tAI', hue='species', palette=palette, fill=True, common_norm=False, log_scale=True, alpha=0.4)
+        plt.title(f'3. Density Plot of tAI Values ({super_kingdom})', fontsize=16)
+        plt.xlabel('tAI (Log Scale)')
+        plt.ylabel('Density')
+        plt.grid(alpha=0.3)
+        plt.tight_layout()
+        
+        plot_path3 = os.path.join(output_folder, 'tai_3_kde_density.png')
+        plt.savefig(plot_path3, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path3, "3. tAI Density (KDE)")))
+    except Exception as e:
+        print(f"  ❌ Error: {e}")
+
+    try:
+        print("  Generating Chart 4: Calculated W-Weights Barplot...")
+        plt.figure(figsize=(18, 6))
+        sns.barplot(x='Codon', y='Weight_W', data=df_W, palette=palette)
+        plt.title(f"4. Calculated Codon Adaptation Weights (W) based on Wobble Rules", fontsize=16)
+        plt.xticks(rotation=90, fontsize=10)
+        plt.ylabel("W-Weight (Relative Adaptability)")
+        plt.xlabel("Codon")
+        plt.grid(axis='y', alpha=0.3)
+        plt.tight_layout()
+        
+        plot_path4 = os.path.join(output_folder, 'tai_4_w_weights_barplot.png')
+        plt.savefig(plot_path4, dpi=150, bbox_inches='tight')
+        plt.close()
+        status_queue.put(("image_ready", (plot_path4, "4. W-Weights Barplot")))
+    except Exception as e:
+        print(f"  ❌ Error: {e}")
+
+def upstream_motifs_analysis(file_list, output_folder, status_queue, gene_list=None, upstream_dist=200, kmer_size=6, palette='viridis'):
     print(f"\n=== UPSTREAM MOTIFS ANALYSIS ===")
     print(f"  Parameters: Distance={upstream_dist}bp, K-mer={kmer_size}bp")
     
@@ -583,23 +873,71 @@ def upstream_motifs_analysis(file_list, output_folder, status_queue, gene_list=N
                 print("  ❌ No valid k-mer found.")
                 continue
 
-            df_top_kmers = pd.DataFrame(kmer_counts.most_common(25), columns=['K-mer', 'Count'])
-            df_top_kmers.to_csv(os.path.join(output_folder, f'motif_counts_{kmer_size}mer_{base_name}.csv'), sep=';', index=False)
+            df_kmers = pd.DataFrame(kmer_counts.most_common(), columns=['K-mer', 'Count'])
+            df_top_kmers = df_kmers.head(25)
+            df_kmers.to_csv(os.path.join(output_folder, f'motif_counts_{kmer_size}mer_{base_name}.csv'), sep=';', index=False)
             
-            print("  Generating K-mers chart...")
-            plt.figure(figsize=(10, 12))
-            sns.barplot(x='Count', y='K-mer', data=df_top_kmers, palette='viridis')
-            plt.title(f'Top 25 most frequent {kmer_size}-mers (Upstream {upstream_dist}bp)\n{base_name}', fontsize=14)
-            plt.xlabel('Absolute Count', fontsize=12)
-            plt.ylabel(f'{kmer_size}-mer', fontsize=12)
-            plt.tight_layout()
-            
-            output_path = os.path.join(output_folder, f'motif_plot_{kmer_size}mer_{base_name}.png')
-            plt.savefig(output_path, dpi=150, bbox_inches='tight')
-            plt.close()
-            
-            print(f"  ✅ Motifs Chart saved in: {output_path}")
-            status_queue.put(("image_ready", (output_path, f"Motifs {kmer_size}-mer - {base_name}")))
+            try:
+                print("  Generating Chart 1: Top 25 K-mers Barplot...")
+                plt.figure(figsize=(10, 12))
+                sns.barplot(x='Count', y='K-mer', data=df_top_kmers, palette=palette)
+                plt.title(f'1. Top 25 Most Frequent {kmer_size}-mers (Upstream {upstream_dist}bp)\n{base_name}', fontsize=14)
+                plt.xlabel('Absolute Count', fontsize=12)
+                plt.ylabel(f'{kmer_size}-mer', fontsize=12)
+                plt.grid(axis='x', alpha=0.3)
+                plt.tight_layout()
+                
+                plot_path1 = os.path.join(output_folder, f'motif_1_barplot_{kmer_size}mer_{base_name}.png')
+                plt.savefig(plot_path1, dpi=150, bbox_inches='tight')
+                plt.close()
+                status_queue.put(("image_ready", (plot_path1, f"1. Top 25 Motifs - {base_name}")))
+            except Exception as e:
+                print(f"  ❌ Error: {e}")
+
+            try:
+                print("  Generating Chart 2: Rank-Frequency Curve...")
+                plt.figure(figsize=(10, 6))
+                
+                try:
+                    plot_col = sns.color_palette(palette)[-1]
+                except:
+                    plot_col = 'red'
+
+                plt.plot(range(1, len(df_kmers) + 1), df_kmers['Count'], color=plot_col, linewidth=2)
+                plt.xscale('log')
+                plt.yscale('log')
+                plt.title(f"2. Motif Frequency Rank Curve (Zipf's Law) - {base_name}", fontsize=14)
+                plt.xlabel('Rank (Log scale)')
+                plt.ylabel('Frequency Count (Log scale)')
+                plt.grid(alpha=0.3)
+                plt.tight_layout()
+                
+                plot_path2 = os.path.join(output_folder, f'motif_2_rank_curve_{base_name}.png')
+                plt.savefig(plot_path2, dpi=150, bbox_inches='tight')
+                plt.close()
+                status_queue.put(("image_ready", (plot_path2, f"2. Motif Rank Curve - {base_name}")))
+            except Exception as e:
+                print(f"  ❌ Error: {e}")
+
+            try:
+                print("  Generating Chart 3: GC Content vs Frequency Boxplot...")
+                df_kmers['GC_Content'] = df_kmers['K-mer'].apply(lambda x: (x.count('G') + x.count('C')) / len(x) * 100)
+                df_kmers['GC_Content'] = df_kmers['GC_Content'].round(1)
+                
+                plt.figure(figsize=(12, 8))
+                sns.boxplot(x='GC_Content', y='Count', data=df_kmers, palette=palette, showfliers=False)
+                plt.title(f"3. K-mer GC Content vs Motif Frequency - {base_name}", fontsize=14)
+                plt.xlabel('GC Content (%)')
+                plt.ylabel('Absolute Frequency Count')
+                plt.grid(axis='y', alpha=0.3)
+                plt.tight_layout()
+                
+                plot_path3 = os.path.join(output_folder, f'motif_3_gc_vs_freq_boxplot_{base_name}.png')
+                plt.savefig(plot_path3, dpi=150, bbox_inches='tight')
+                plt.close()
+                status_queue.put(("image_ready", (plot_path3, f"3. GC vs Motif Freq Boxplot - {base_name}")))
+            except Exception as e:
+                print(f"  ❌ Error: {e}")
 
         except Exception as e_file:
             print(f"  ❌ General error processing motifs in {base_name}: {e_file}")
