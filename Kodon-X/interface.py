@@ -3,26 +3,28 @@ import sys
 import threading
 import queue
 import glob
+import platform
+import subprocess
 from datetime import datetime
 import pandas as pd
-from PIL import Image
-
-import matplotlib
-matplotlib.use('qtagg') 
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
-from matplotlib.figure import Figure
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
-    QLineEdit, QComboBox, QCheckBox, QListWidget, QListWidgetItem, 
+    QLineEdit, QComboBox, QListWidget, QListWidgetItem, 
     QTabWidget, QTextEdit, QFileDialog, QMessageBox, QProgressBar, 
-    QDockWidget, QSplitter, QFrame, QScrollArea, QGridLayout, QFormLayout
+    QDockWidget, QFrame, QScrollArea,
+    QMenuBar, QMenu, QSizePolicy, QGraphicsView, QGraphicsScene
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject
-from PyQt6.QtGui import QFont, QIcon, QAction, QColor, QTextCursor, QTextCharFormat
+from PyQt6.QtGui import QFont, QColor, QTextCursor, QTextCharFormat, QPixmap, QPainter
 
+from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+from Bio.SeqFeature import SeqFeature, FeatureLocation
 
-from core_utils import process_genomes_for_bias_analysis
+from core_utils import process_genomes_for_bias_analysis, calculate_rscu
+from constants import GENETIC_CODE_TABLES, CODON_GRID_ORDER
 from analysis_basic import process_aggregated_gbk, analyze_gbk_cds, list_genes_from_file, analyze_genomic_composition
 from analysis_bias import generate_rscu_heatmap_and_table, comparative_rscu_analysis, rscu_correlation_analysis, generate_rscu_histograms, enc_gc3_analysis, optimal_rare_codons_analysis, neutrality_plot_analysis
 from analysis_advanced import codon_pair_bias_analysis, gravy_aromo_analysis, dinucleotide_composition_analysis, pr2_plot_analysis, tai_analysis, upstream_motifs_analysis
@@ -52,19 +54,18 @@ class KodonE_GUI(QMainWindow):
         self.setWindowTitle("Kodon-X")
         self.resize(1600, 900)
         
-        
         self.SUCCESS_COLOR = "#43A047"
         self.ERROR_COLOR = "#E53935"
         self.WARNING_COLOR = "#FB8C00"
         self.INFO_COLOR = "#039BE5"
         
-        
         self.stdout_queue = queue.Queue()
         self.status_queue = queue.Queue()
         
-        
         self.file_paths_map = {}
-        self.current_images = []
+        self.image_history = []
+        self.current_image_index = -1
+        
         self.expression_dataframe = None
         self.analysis_data = self._get_analysis_definitions()
         
@@ -74,10 +75,9 @@ class KodonE_GUI(QMainWindow):
         self._apply_stylesheet()
         self._create_widgets()
         
-        
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._process_queues)
-        self.timer.start(100) # 100ms
+        self.timer.start(100)
         
         self.files_loaded_signal.connect(self._update_synth_host_list)
         
@@ -88,7 +88,7 @@ class KodonE_GUI(QMainWindow):
         return {
             '1: Statistics and CDS': {
                 'id': '1',
-                'description': ('Performs an initial scan on all genomes. \nResearch Application: Essential for data *quality control (QC)*.'),
+                'description': ('Performs an initial scan on all genomes. \nResearch Application: Essential for data quality control (QC).'),
                 'files_required': '1+', 
                 'function': None 
             },
@@ -124,7 +124,7 @@ class KodonE_GUI(QMainWindow):
             },
             '7: ENC vs GC3 Analysis (Wright Plot)': {
                 'id': '7',
-                'description': ("Generates the 'Wright Plot' (ENC vs. GC3)."),
+                'description': ("Generates the Wright Plot (ENC vs. GC3)."),
                 'files_required': '1+', 
                 'function': enc_gc3_analysis
             },
@@ -172,7 +172,7 @@ class KodonE_GUI(QMainWindow):
             },
             '15: tRNA Adaptation Index (tAI)': {
                 'id': '15',
-                'description': ('Calculates the \'tRNA Adaptation Index\' (tAI) using wobble rules.'),
+                'description': ('Calculates the tRNA Adaptation Index (tAI) using wobble rules.'),
                 'files_required': '1+', 
                 'function': tai_analysis 
             },
@@ -203,7 +203,6 @@ class KodonE_GUI(QMainWindow):
         }
 
     def _apply_stylesheet(self):
-        
         qss = """
         QMainWindow {
             background-color: #1a1b26;
@@ -322,23 +321,14 @@ class KodonE_GUI(QMainWindow):
         self.setStyleSheet(qss)
 
     def _create_widgets(self):
-        
-        self.setCentralWidget(QWidget())
-        self.centralWidget().hide()
-
-        
         self.setDockOptions(QMainWindow.DockOption.AllowNestedDocks | QMainWindow.DockOption.AnimatedDocks)
 
-        
         self._create_left_dock()
-        
-        
         self._create_bottom_dock()
+        self._create_central_area() 
         
-        
-        self._create_main_dock()
+        self._create_menu_bar()
 
-        
         self.statusBar = self.statusBar()
         self.status_label = QLabel("Ready")
         self.statusBar.addWidget(self.status_label, 1)
@@ -349,17 +339,25 @@ class KodonE_GUI(QMainWindow):
         self.progress_bar.hide()
         self.statusBar.addPermanentWidget(self.progress_bar)
 
+    def _create_menu_bar(self):
+        menu_bar = self.menuBar()
+        view_menu = menu_bar.addMenu("View")
+        
+        if hasattr(self, 'dock_workspace'):
+            view_menu.addAction(self.dock_workspace.toggleViewAction())
+        if hasattr(self, 'dock_console'):
+            view_menu.addAction(self.dock_console.toggleViewAction())
+
     def _create_left_dock(self):
-        dock = QDockWidget("Project Workspace", self)
-        dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
-        dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetFloatable)
+        self.dock_workspace = QDockWidget("Project Workspace", self)
+        self.dock_workspace.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+        self.dock_workspace.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetFloatable | QDockWidget.DockWidgetFeature.DockWidgetClosable)
         
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(15)
 
-        
         input_group = QFrame()
         input_layout = QVBoxLayout(input_group)
         input_layout.setContentsMargins(0, 0, 0, 0)
@@ -398,7 +396,6 @@ class KodonE_GUI(QMainWindow):
         
         layout.addWidget(input_group)
 
-        
         output_group = QFrame()
         output_layout = QVBoxLayout(output_group)
         output_layout.setContentsMargins(0, 0, 0, 0)
@@ -418,7 +415,6 @@ class KodonE_GUI(QMainWindow):
         
         layout.addWidget(output_group)
 
-        
         gen_group = QFrame()
         gen_layout = QVBoxLayout(gen_group)
         gen_layout.setContentsMargins(0, 0, 0, 0)
@@ -439,12 +435,13 @@ class KodonE_GUI(QMainWindow):
         layout.addWidget(gen_group)
         layout.addStretch()
 
-        dock.setWidget(container)
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+        self.dock_workspace.setWidget(container)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.dock_workspace)
 
     def _create_bottom_dock(self):
-        dock = QDockWidget("Output Console", self)
-        dock.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea)
+        self.dock_console = QDockWidget("Output Console", self)
+        self.dock_console.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea | Qt.DockWidgetArea.TopDockWidgetArea)
+        self.dock_console.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetFloatable | QDockWidget.DockWidgetFeature.DockWidgetClosable)
         
         container = QWidget()
         layout = QVBoxLayout(container)
@@ -452,19 +449,21 @@ class KodonE_GUI(QMainWindow):
         
         self.console_text = QTextEdit()
         self.console_text.setReadOnly(True)
-        self.console_text.setFont(QFont("Consolas", 10))
-        
+        self.console_text.setFont(QFont("Consolas", 11)) 
+        self.console_text.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap) 
+        self.console_text.document().setMaximumBlockCount(2500) 
         self.console_text.setStyleSheet("background-color: #0d0d12; color: #a9b1d6; border: none;")
+        
+        self.console_text.setMinimumHeight(50)
+        self.console_text.setMinimumWidth(50)
+        self.console_text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
+        
         layout.addWidget(self.console_text)
         
-        dock.setWidget(container)
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock)
+        self.dock_console.setWidget(container)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.dock_console)
 
-    def _create_main_dock(self):
-        dock = QDockWidget("Main Canvas", self)
-        dock.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures) # Fixa no centro
-        dock.setTitleBarWidget(QWidget()) # Esconde a barra de título
-        
+    def _create_central_area(self):
         self.notebook = QTabWidget()
         
         self.tab_analysis = QWidget()
@@ -474,7 +473,7 @@ class KodonE_GUI(QMainWindow):
         
         self.notebook.addTab(self.tab_analysis, " Run Analysis")
         self.notebook.addTab(self.tab_synth, " Synthetic Biology")
-        self.notebook.addTab(self.tab_viz, " Chart Viewer")
+        self.notebook.addTab(self.tab_viz, " Output")
         self.notebook.addTab(self.tab_help, "❓ Help")
         
         self._create_analysis_tab(self.tab_analysis)
@@ -482,8 +481,7 @@ class KodonE_GUI(QMainWindow):
         self._create_visualization_tab(self.tab_viz)
         self._create_help_tab(self.tab_help)
         
-        dock.setWidget(self.notebook)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+        self.setCentralWidget(self.notebook)
 
     def _create_analysis_tab(self, tab):
         layout = QVBoxLayout(tab)
@@ -502,22 +500,39 @@ class KodonE_GUI(QMainWindow):
         self.analysis_desc_text.setMaximumHeight(100)
         layout.addWidget(self.analysis_desc_text)
         
-        
         self.analysis_options_container = QWidget()
         self.analysis_options_layout = QVBoxLayout(self.analysis_options_container)
         self.analysis_options_layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.analysis_options_container)
+
+        lbl_palette = QLabel("Chart Color Palette:")
+        lbl_palette.setFont(QFont("Calibri", 11, QFont.Weight.Bold))
+        layout.addWidget(lbl_palette)
         
-        # Filtro Global
+        self.palette_combo = QComboBox()
+        self.palette_combo.addItems([
+            "viridis", "plasma", "inferno", "magma",
+            "cividis", "colorblind", "Set2", "Pastel1",
+            "Dark2", "Blues", "Reds", "Greens"
+        ])
+        layout.addWidget(self.palette_combo)
+        
         self.gene_filter_frame = QFrame()
         gf_layout = QVBoxLayout(self.gene_filter_frame)
         gf_layout.setContentsMargins(0, 10, 0, 0)
         
+        lbl_gf_layout = QHBoxLayout()
         lbl_gf = QLabel("Global Gene Filter (Optional)")
         lbl_gf.setFont(QFont("Calibri", 11, QFont.Weight.Bold))
-        gf_layout.addWidget(lbl_gf)
+        lbl_gf_layout.addWidget(lbl_gf)
         
-        lbl_gf_desc = QLabel("Paste a list of locus_tags or gene names (one per line).\nIf filled, ALL analyses will only use this subset of genes.")
+        btn_load_gf = QPushButton("📂 Load File (TXT, FASTA, GBK)")
+        btn_load_gf.clicked.connect(lambda: self._on_load_gene_list_file(self.gene_filter_text))
+        lbl_gf_layout.addWidget(btn_load_gf)
+        lbl_gf_layout.addStretch()
+        gf_layout.addLayout(lbl_gf_layout)
+        
+        lbl_gf_desc = QLabel("Paste a list of locus_tags or gene names (one per line), or load a file.\nIf filled, ALL analyses will only use this subset of genes.")
         gf_layout.addWidget(lbl_gf_desc)
         
         self.gene_filter_text = QTextEdit()
@@ -531,8 +546,61 @@ class KodonE_GUI(QMainWindow):
         self.run_button.clicked.connect(self._on_run_analysis)
         layout.addWidget(self.run_button)
         
-        # Iniciar com a primeira análise selecionada
         self._on_analysis_selected(self.analysis_combo.currentText())
+
+    def _on_load_gene_list_file(self, target_text_edit):
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "Select File with Gene IDs", "", "All Supported (*.txt *.fasta *.fas *.fa *.gbk *.gb);;Text Files (*.txt);;FASTA Files (*.fasta *.fas *.fa);;GenBank Files (*.gbk *.gb)"
+        )
+        if not filepath:
+            return
+        
+        extracted_ids = []
+        ext = filepath.lower().split('.')[-1]
+        
+        try:
+            if ext == 'txt':
+                with open(filepath, 'r') as f:
+                    for line in f:
+                        val = line.strip()
+                        if val: extracted_ids.append(val)
+            elif ext in ['fasta', 'fas', 'fa']:
+                for record in SeqIO.parse(filepath, "fasta"):
+                    extracted_ids.append(record.id)
+            elif ext in ['gbk', 'gb']:
+                for record in SeqIO.parse(filepath, "genbank"):
+                    for feature in record.features:
+                        if feature.type == "CDS":
+                            if "locus_tag" in feature.qualifiers:
+                                extracted_ids.append(feature.qualifiers["locus_tag"][0])
+                            elif "protein_id" in feature.qualifiers:
+                                extracted_ids.append(feature.qualifiers["protein_id"][0])
+                            elif "gene" in feature.qualifiers:
+                                extracted_ids.append(feature.qualifiers["gene"][0])
+            else:
+                QMessageBox.warning(self, "Unsupported Format", f"Cannot extract IDs from .{ext} files.")
+                return
+            
+            if not extracted_ids:
+                QMessageBox.information(self, "Info", "No gene IDs or locus_tags found in the selected file.")
+                return
+                
+            seen = set()
+            unique_ids = []
+            for x in extracted_ids:
+                if x not in seen:
+                    unique_ids.append(x)
+                    seen.add(x)
+                    
+            current_text = target_text_edit.toPlainText().strip()
+            if current_text:
+                target_text_edit.setText(current_text + "\n" + "\n".join(unique_ids))
+            else:
+                target_text_edit.setText("\n".join(unique_ids))
+                
+            self._write_to_console(f"Loaded {len(unique_ids)} unique IDs from {os.path.basename(filepath)}.\n", "success")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not read file:\n{e}")
 
     def _create_synth_bio_tab(self, tab):
         layout = QHBoxLayout(tab)
@@ -547,9 +615,13 @@ class KodonE_GUI(QMainWindow):
         self.synth_host_combo = QComboBox()
         lp_layout.addWidget(self.synth_host_combo)
         
-        lbl_seq = QLabel("2. Paste DNA Sequence (CDS):")
+        lbl_seq = QLabel("2. Paste CDS Sequence or Load FASTA:")
         lbl_seq.setFont(QFont("Calibri", 11, QFont.Weight.Bold))
         lp_layout.addWidget(lbl_seq)
+        
+        btn_fasta = QPushButton("📂 Load FASTA")
+        btn_fasta.clicked.connect(self._on_load_fasta_synth)
+        lp_layout.addWidget(btn_fasta)
         
         self.synth_input_seq = QTextEdit()
         self.synth_input_seq.setFont(QFont("Consolas", 10))
@@ -579,27 +651,113 @@ class KodonE_GUI(QMainWindow):
         layout.addWidget(left_panel)
         layout.addWidget(right_panel)
 
+    def _on_load_fasta_synth(self):
+        filepath, _ = QFileDialog.getOpenFileName(self, "Select FASTA file", "", "FASTA Files (*.fasta *.fas *.fa);;All Files (*.*)")
+        if filepath:
+            try:
+                record = next(SeqIO.parse(filepath, "fasta"))
+                self.synth_input_seq.setText(str(record.seq))
+                self._write_to_console(f"FASTA loaded successfully: {filepath}\n", "success")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Could not read FASTA:\n{e}")
+
     def _create_visualization_tab(self, tab):
         layout = QVBoxLayout(tab)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self._setup_gallery_tab(layout)
+
+    def _setup_gallery_tab(self, layout):
+        toolbar_layout = QHBoxLayout()
         
-        self.fig = Figure(figsize=(10, 8), dpi=100)
-        self.fig.patch.set_facecolor("#1a1b26") # Fundo escuro
-        self.fig.set_tight_layout(True)
+        self.btn_prev_chart = QPushButton("◀ Previous")
+        self.btn_prev_chart.setFixedWidth(100)
+        self.btn_prev_chart.clicked.connect(self._on_prev_chart)
         
-        self.canvas = FigureCanvasQTAgg(self.fig)
-        layout.addWidget(self.canvas, stretch=1)
-        
-        self.toolbar = NavigationToolbar2QT(self.canvas, self)
-        # Ajuste de estilo da toolbar (cores padrão no dark theme costumam falhar)
-        self.toolbar.setStyleSheet("QToolButton { background-color: #24283b; color: white; }")
-        
-        h_tool = QHBoxLayout()
-        h_tool.addWidget(self.toolbar)
         self.image_status_label = QLabel("No chart loaded.")
-        h_tool.addStretch()
-        h_tool.addWidget(self.image_status_label)
+        self.image_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_status_label.setStyleSheet("color: #c0caf5; font-weight: bold; font-size: 14px;")
         
-        layout.addLayout(h_tool)
+        self.btn_next_chart = QPushButton("Next ▶")
+        self.btn_next_chart.setFixedWidth(100)
+        self.btn_next_chart.clicked.connect(self._on_next_chart)
+
+        self.btn_zoom_in = QPushButton("🔍 +")
+        self.btn_zoom_in.setFixedWidth(50)
+        self.btn_zoom_in.clicked.connect(lambda: self.view.scale(1.2, 1.2))
+
+        self.btn_zoom_out = QPushButton("🔍 -")
+        self.btn_zoom_out.setFixedWidth(50)
+        self.btn_zoom_out.clicked.connect(lambda: self.view.scale(0.8, 0.8))
+
+        self.btn_zoom_fit = QPushButton("Fit Window")
+        self.btn_zoom_fit.clicked.connect(self._fit_image)
+        
+        self.btn_open_external = QPushButton("🖵 Open Fullscreen")
+        self.btn_open_external.clicked.connect(self._on_open_external)
+        
+        toolbar_layout.addWidget(self.btn_prev_chart)
+        toolbar_layout.addWidget(self.image_status_label, stretch=1)
+        toolbar_layout.addWidget(self.btn_next_chart)
+        
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.VLine)
+        toolbar_layout.addWidget(line)
+        
+        toolbar_layout.addWidget(self.btn_zoom_in)
+        toolbar_layout.addWidget(self.btn_zoom_out)
+        toolbar_layout.addWidget(self.btn_zoom_fit)
+        
+        line2 = QFrame()
+        line2.setFrameShape(QFrame.Shape.VLine)
+        toolbar_layout.addWidget(line2)
+
+        toolbar_layout.addWidget(self.btn_open_external)
+        
+        layout.addLayout(toolbar_layout)
+
+        self.scene = QGraphicsScene()
+        self.view = QGraphicsView(self.scene)
+        self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.view.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        self.view.setStyleSheet("background-color: #1a1b26; border: 1px solid #3b4261;")
+        layout.addWidget(self.view, stretch=1)
+
+        self._update_chart_buttons()
+
+    def _fit_image(self):
+        if self.scene.items():
+            self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+
+    def _on_prev_chart(self):
+        if self.current_image_index > 0:
+            self.current_image_index -= 1
+            self._render_current_image()
+
+    def _on_next_chart(self):
+        if self.current_image_index < len(self.image_history) - 1:
+            self.current_image_index += 1
+            self._render_current_image()
+
+    def _on_open_external(self):
+        if 0 <= self.current_image_index < len(self.image_history):
+            filepath, _ = self.image_history[self.current_image_index]
+            try:
+                if platform.system() == 'Darwin':
+                    subprocess.call(('open', filepath))
+                elif platform.system() == 'Windows':
+                    os.startfile(filepath)
+                else:
+                    subprocess.call(('xdg-open', filepath))
+            except Exception as e:
+                self._write_to_console(f"❌ Error opening external viewer: {e}\n", "error")
+
+    def _update_chart_buttons(self):
+        self.btn_prev_chart.setEnabled(self.current_image_index > 0)
+        self.btn_next_chart.setEnabled(self.current_image_index < len(self.image_history) - 1)
+        self.btn_open_external.setEnabled(self.current_image_index >= 0)
+        self.btn_zoom_in.setEnabled(self.current_image_index >= 0)
+        self.btn_zoom_out.setEnabled(self.current_image_index >= 0)
+        self.btn_zoom_fit.setEnabled(self.current_image_index >= 0)
 
     def _create_help_tab(self, tab):
         layout = QVBoxLayout(tab)
@@ -613,22 +771,35 @@ class KodonE_GUI(QMainWindow):
             lbl = QLabel(text)
             lbl.setWordWrap(True)
             if style == "h1":
-                lbl.setFont(QFont("Calibri", 20, QFont.Weight.Bold))
-                lbl.setStyleSheet("color: #7aa2f7;")
+                lbl.setFont(QFont("Calibri", 24, QFont.Weight.Bold))
+                lbl.setStyleSheet("color: #7aa2f7; margin-bottom: 10px;")
             elif style == "h2":
-                lbl.setFont(QFont("Calibri", 16, QFont.Weight.Bold))
+                lbl.setFont(QFont("Calibri", 18, QFont.Weight.Bold))
+                lbl.setStyleSheet("color: #9ece6a; margin-top: 15px; margin-bottom: 5px;")
             elif style == "h3":
-                lbl.setFont(QFont("Calibri", 14, QFont.Weight.Bold))
-                lbl.setStyleSheet("color: #2ac3de;")
+                lbl.setFont(QFont("Calibri", 15, QFont.Weight.Bold))
+                lbl.setStyleSheet("color: #2ac3de; margin-top: 10px;")
             elif style == "bold":
-                lbl.setFont(QFont("Calibri", 11, QFont.Weight.Bold))
+                lbl.setFont(QFont("Calibri", 14, QFont.Weight.Bold))
+                lbl.setStyleSheet("color: #c0caf5;")
+            else:
+                lbl.setFont(QFont("Calibri", 14))
+                lbl.setStyleSheet("color: #a9b1d6; line-height: 1.5;")
             c_layout.addWidget(lbl)
 
         add_text("Kodon-X USER GUIDE", "h1")
         add_text("Welcome to the Kodon-X analysis interface. Follow this guide for an efficient workflow.", "normal")
+        
         add_text("QUICK WORKFLOW", "h2")
         add_text("1. Load Files", "h3")
         add_text("Use the 'Step 1' panel to 'Browse...' your folder with .gbk or .gb files. Click 'Load Files'.", "normal")
+        
+        add_text("SYNTHETIC BIOLOGY", "h2")
+        add_text("The Synthetic Biology tab allows you to adapt a DNA sequence to be optimally expressed in a specific host organism. You can paste the sequence directly or use the 'Load FASTA' button.", "normal")
+        add_text("Optimization:", "h3")
+        add_text("Replaces all codons of the original sequence with the most favorable codons (highest RSCU) in the host organism. This maximizes translation speed and protein production.", "normal")
+        add_text("Harmonization:", "h3")
+        add_text("Maintains the original translation 'rhythm'. If a codon is rare in the source organism, it will be replaced by an equally rare codon in the host organism. This preserves translation pauses vital for correct protein folding. In the end, the tool generates a GenBank (.gbk) file that will be saved in the chosen directory.", "normal")
         
         add_text("ANALYSIS DESCRIPTIONS", "h2")
         for analysis_name, data in self.analysis_data.items():
@@ -669,17 +840,17 @@ class KodonE_GUI(QMainWindow):
         self.file_list_widget.clear()
         self.file_paths_map.clear()
         
-        patterns = ["*.gbk", "*.gb", "*.gbff"]
+        patterns = ["*.gbk", "*.gb", "*.gbff", "*.gbf"]
         files = []
         for pattern in patterns:
             files.extend(glob.glob(os.path.join(folder, pattern)))
             
         if not files:
-            self._write_to_console(f"No .gbk or .gb files found in '{folder}'\n", "warning")
+            self._write_to_console(f"No .gbk, .gb, .gbff or .gbf files found in '{folder}'\n", "warning")
             self.lbl_file_count.setText("0 files")
             return
             
-        self._write_to_console(f"Found {len(files)} .gbk/.gb files.\n", "success")
+        self._write_to_console(f"Found {len(files)} valid GenBank files.\n", "success")
         
         for file_path in sorted(files):
             filename = os.path.basename(file_path)
@@ -736,7 +907,6 @@ class KodonE_GUI(QMainWindow):
         
         self._clear_layout(self.analysis_options_layout)
         
-        # Variáveis dinâmicas da GUI baseadas na análise
         self.gene_filter_text.setEnabled(True)
         
         if data['id'] == '1':
@@ -789,15 +959,28 @@ class KodonE_GUI(QMainWindow):
             w = QWidget()
             lo = QVBoxLayout(w)
             
-            lo.addWidget(QLabel("Gene Group 1 (one per line):"))
+            h1 = QHBoxLayout()
+            h1.addWidget(QLabel("Gene Group 1 (one per line):"))
+            btn_g1 = QPushButton("📂 Load File")
+            btn_g1.clicked.connect(lambda: self._on_load_gene_list_file(self.gene_list_1_text))
+            h1.addWidget(btn_g1)
+            h1.addStretch()
+            lo.addLayout(h1)
             self.gene_list_1_text = QTextEdit()
             self.gene_list_1_text.setMaximumHeight(80)
             lo.addWidget(self.gene_list_1_text)
             
-            lo.addWidget(QLabel("Gene Group 2 (one per line):"))
+            h2 = QHBoxLayout()
+            h2.addWidget(QLabel("Gene Group 2 (one per line):"))
+            btn_g2 = QPushButton("📂 Load File")
+            btn_g2.clicked.connect(lambda: self._on_load_gene_list_file(self.gene_list_2_text))
+            h2.addWidget(btn_g2)
+            h2.addStretch()
+            lo.addLayout(h2)
             self.gene_list_2_text = QTextEdit()
             self.gene_list_2_text.setMaximumHeight(80)
             lo.addWidget(self.gene_list_2_text)
+            
             self.analysis_options_layout.addWidget(w)
 
         elif data['id'] == '19':
@@ -848,6 +1031,8 @@ class KodonE_GUI(QMainWindow):
         
         gene_list = None
         extra_args = {}
+        
+        extra_args['palette'] = self.palette_combo.currentText().split()[0]
         
         if analysis_data.get('id') != '18':
             raw_text = self.gene_filter_text.toPlainText()
@@ -932,7 +1117,7 @@ class KodonE_GUI(QMainWindow):
 
     def _get_host_data(self, host_filename):
         if host_filename not in self.file_paths_map:
-            print(f"❌ Error: Host file '{host_filename}' not found.")
+            print(f"Error: Host file '{host_filename}' not found.")
             return None
         host_filepath = self.file_paths_map[host_filename]
         genetic_code_id = self._get_genetic_code_id()
@@ -962,28 +1147,33 @@ class KodonE_GUI(QMainWindow):
             QMessageBox.warning(self, "Warning", "Select a host genome.")
             return
         if len(input_seq) < 10:
-            QMessageBox.warning(self, "Warning", "Enter a valid DNA sequence (minimum 10bp).")
+            QMessageBox.warning(self, "Warning", "Insert a valid DNA sequence (minimum 10bp).")
             return
             
+        output_filepath, _ = QFileDialog.getSaveFileName(self, "Save Result as GenBank", f"result_{mode}.gbk", "GenBank Files (*.gbk *.gb)")
+        if not output_filepath:
+            return 
+            
+        self.dock_console.show() 
         self.run_optimize_btn.setEnabled(False)
         self.run_harmonize_btn.setEnabled(False)
         self.progress_bar.show()
-        self.progress_bar.setRange(0, 0) # Indeterminado
+        self.progress_bar.setRange(0, 0)
         self.status_label.setText(f"Starting {mode}...")
         
         genetic_code_id = self._get_genetic_code_id()
 
         thread = threading.Thread(
             target=self._optimization_thread_target,
-            args=(input_seq, host_filename, genetic_code_id, mode),
+            args=(input_seq, host_filename, genetic_code_id, mode, output_filepath),
             daemon=True
         )
         thread.start()
 
-    def _optimization_thread_target(self, input_seq, host_filename, genetic_code_id, mode):
+    def _optimization_thread_target(self, input_seq, host_filename, genetic_code_id, mode, output_filepath):
         try:
             print(f"\n{'='*60}")
-            print(f"🚀 STARTING SYNTHETIC BIOLOGY TOOL")
+            print(f"STARTING SYNTHETIC BIOLOGY TOOL")
             print(f"   Mode: {mode}")
             print(f"   Host: {host_filename}")
             print(f"   Input Size: {len(input_seq)}bp")
@@ -991,7 +1181,7 @@ class KodonE_GUI(QMainWindow):
             
             host_data = self._get_host_data(host_filename)
             if not host_data:
-                raise Exception("Could not obtain host data.")
+                raise Exception("Could not retrieve host data.")
             
             self.status_queue.put(("progress", 50))
             
@@ -1003,8 +1193,20 @@ class KodonE_GUI(QMainWindow):
                 self.status_queue.put(("message", "Harmonizing sequence..."))
                 result_seq = harmonize_codon_sequence(input_seq, host_data['counts'], genetic_code_id)
             
+            record = SeqRecord(Seq(result_seq), id=f"Synth_{mode}", name="SyntheticBio", description=f"Sequence {mode}d for {host_filename}")
+            
+            record.annotations["molecule_type"] = "DNA"
+            
+            feature = SeqFeature(FeatureLocation(start=0, end=len(result_seq)), type="CDS")
+            record.features.append(feature)
+            
+            with open(output_filepath, "w") as out_handle:
+                SeqIO.write(record, out_handle, "genbank")
+                
+            print(f"\n✅ GenBank file saved successfully at:\n{output_filepath}")
+            self.status_queue.put(("message", f"GenBank saved at {os.path.basename(output_filepath)}"))
             self.status_queue.put(("optimization_complete", result_seq))
-            print("✅ Tool completed successfully.")
+            print("✅ Process completed successfully.")
         except Exception as e:
             print(f"\n❌ ERROR DURING OPERATION: {e}", "error")
             import traceback
@@ -1014,6 +1216,7 @@ class KodonE_GUI(QMainWindow):
             self.status_queue.put(("tool_done", None))
 
     def _start_analysis_thread(self, files, output_folder, analysis_name, gene_list, extra_args):
+        self.dock_console.show() 
         self.console_text.clear()
         
         self.run_button.setEnabled(False)
@@ -1023,6 +1226,12 @@ class KodonE_GUI(QMainWindow):
         
         genetic_code_id = self._get_genetic_code_id()
         analysis_data = self.analysis_data[analysis_name]
+        
+        self.image_history.clear()
+        self.current_image_index = -1
+        self._update_chart_buttons()
+        self.scene.clear()
+        self.image_status_label.setText("No chart loaded.")
         
         thread = threading.Thread(
             target=self._analysis_thread_target,
@@ -1043,14 +1252,17 @@ class KodonE_GUI(QMainWindow):
 
     def _analysis_thread_target(self, files, output_folder, analysis_name, analysis_data, genetic_code_id, gene_list, extra_args):
         try:
-            print(f"🚀 STARTING ANALYSIS: {analysis_name}")
+            print(f"STARTING ANALYSIS: {analysis_name}")
             if gene_list:
                 print(f"FILTER ACTIVE: Analyzing only {len(gene_list)} specified genes.")
             print(f"{'='*60}")
             print(f"Files: {len(files)}")
             print(f"Output Folder: {output_folder}")
             print(f"Genetic Table: {genetic_code_id}")
+            print(f"Palette: {extra_args.get('palette', 'viridis')}")
             print(f"{'='*60}")
+            
+            palette = extra_args.get('palette', 'viridis')
             
             if analysis_data['id'] in ['3', '4', '5', '6', '7', '9', '12']:
                 all_bias_data = process_genomes_for_bias_analysis(files, genetic_code_id, self.status_queue, gene_list)
@@ -1059,9 +1271,9 @@ class KodonE_GUI(QMainWindow):
                 analysis_function = analysis_data['function']
                 if analysis_function:
                     if analysis_data['id'] in ['3', '6']: 
-                        analysis_function(all_bias_data, output_folder, genetic_code_id, self.status_queue)
+                        analysis_function(all_bias_data, output_folder, genetic_code_id, self.status_queue, palette=palette)
                     else:
-                        analysis_function(all_bias_data, output_folder, self.status_queue)
+                        analysis_function(all_bias_data, output_folder, self.status_queue, palette=palette)
             elif analysis_data['id'] == '1':
                 print("\n--- [Analysis 1] Part 1: Aggregated Statistics ---")
                 df_stats = process_aggregated_gbk(files, self.status_queue)
@@ -1080,32 +1292,32 @@ class KodonE_GUI(QMainWindow):
                     self._print_dataframe_limitado(df_genes, "Gene List")
                     df_genes.to_csv(os.path.join(output_folder, f"gene_list_{os.path.basename(files[0])}.csv"), index=False, sep=';')
             elif analysis_data['id'] == '8':
-                analyze_genomic_composition(files, output_folder, self.status_queue)
+                analyze_genomic_composition(files, output_folder, self.status_queue, palette=palette)
             elif analysis_data['id'] == '10':
-                codon_pair_bias_analysis(files, output_folder, genetic_code_id, self.status_queue, gene_list)
+                codon_pair_bias_analysis(files, output_folder, genetic_code_id, self.status_queue, gene_list, palette=palette)
             elif analysis_data['id'] == '11':
-                gravy_aromo_analysis(files, output_folder, genetic_code_id, self.status_queue, gene_list)
+                gravy_aromo_analysis(files, output_folder, genetic_code_id, self.status_queue, gene_list, palette=palette)
             elif analysis_data['id'] == '13':
-                dinucleotide_composition_analysis(files, output_folder, self.status_queue)
+                dinucleotide_composition_analysis(files, output_folder, self.status_queue, palette=palette)
             elif analysis_data['id'] == '14':
-                pr2_plot_analysis(files, output_folder, genetic_code_id, self.status_queue, gene_list)
+                pr2_plot_analysis(files, output_folder, genetic_code_id, self.status_queue, gene_list, palette=palette)
             elif analysis_data['id'] == '15':
                 kingdom_name = extra_args.get('super_kingdom', 'Bacteria')
                 tai_analysis(files, output_folder, genetic_code_id, self.status_queue, gene_list, 
-                            super_kingdom=kingdom_name)
+                            super_kingdom=kingdom_name, palette=palette)
             elif analysis_data['id'] == '16':
                 upstream_motifs_analysis(files, output_folder, self.status_queue, gene_list, 
-                                        extra_args['upstream_dist'], extra_args['kmer_size'])
+                                        extra_args['upstream_dist'], extra_args['kmer_size'], palette=palette)
             elif analysis_data['id'] == '17':
                 initiation_mfe_analysis(files, output_folder, genetic_code_id, self.status_queue, gene_list, 
-                                      extra_args['mfe_region_length'])
+                                      extra_args['mfe_region_length'], palette=palette)
             elif analysis_data['id'] == '18':
                 two_groups_comparative_analysis(files, output_folder, genetic_code_id, self.status_queue, 
-                                                extra_args['gene_list_1'], extra_args['gene_list_2'])
+                                                extra_args['gene_list_1'], extra_args['gene_list_2'], palette=palette)
             elif analysis_data['id'] == '19':
                 expression_correlation_analysis(files, output_folder, genetic_code_id, self.status_queue, 
                                              gene_list, extra_args['expression_data'], 
-                                             extra_args['gene_col'], extra_args['expr_col'])
+                                             extra_args['gene_col'], extra_args['expr_col'], palette=palette)
             else:
                 print(f"Warning: Analysis '{analysis_name}' not implemented.", "warning")
             print(f"\n{'='*60}")
@@ -1120,7 +1332,7 @@ class KodonE_GUI(QMainWindow):
             self.status_queue.put(("done", None))
 
     def _process_queues(self):
-        # Processa o stdout customizado
+        updates_made = False
         try:
             while True:
                 text = self.stdout_queue.get_nowait()
@@ -1134,9 +1346,12 @@ class KodonE_GUI(QMainWindow):
                     self._write_to_console(text, "warning")
                 else:
                     self._write_to_console(text)
+                updates_made = True
         except queue.Empty:
             pass
-        
+            
+        if updates_made:
+            self.console_text.ensureCursorVisible()
         
         try:
             while True:
@@ -1195,29 +1410,25 @@ class KodonE_GUI(QMainWindow):
             format.setForeground(QColor("#a9b1d6"))
             
         cursor.insertText(text, format)
-        self.console_text.setTextCursor(cursor)
-        self.console_text.ensureCursorVisible()
 
     def _display_image(self, image_path, title):
         try:
-            self.fig.clear()
-            img = Image.open(image_path)
-            ax = self.fig.add_subplot(111)
-            ax.imshow(img)
-            ax.axis('off')
-            ax.set_title(title, fontsize=14, fontweight='bold', color="#c0caf5") 
-            ax.set_facecolor("#1a1b26")
-            self.fig.patch.set_facecolor("#1a1b26")
-            self.fig.set_tight_layout(True)
-            self.canvas.draw()
-            
-            self.current_images.append((image_path, title))
-            self.image_status_label.setText(f"Displaying: {title}")
-            
+            self.image_history.append((image_path, title))
+            self.current_image_index = len(self.image_history) - 1
+            self._render_current_image()
             self.notebook.setCurrentWidget(self.tab_viz)
-            
         except Exception as e:
             self._write_to_console(f"❌ Error displaying image {image_path}: {e}\n", "error")
+
+    def _render_current_image(self):
+        if 0 <= self.current_image_index < len(self.image_history):
+            image_path, title = self.image_history[self.current_image_index]
+            self.scene.clear()
+            pixmap = QPixmap(image_path)
+            self.scene.addPixmap(pixmap)
+            self._fit_image()
+            self.image_status_label.setText(f"({self.current_image_index + 1}/{len(self.image_history)}) {title}")
+        self._update_chart_buttons()
 
     def closeEvent(self, event):
         reply = QMessageBox.question(
