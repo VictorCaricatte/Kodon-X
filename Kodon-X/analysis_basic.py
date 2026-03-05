@@ -175,7 +175,7 @@ def analyze_nucleotide_composition(file_path):
         print(f"  ❌ Error analyzing composition: {e}")
         return None
 
-def analyze_genomic_composition(file_list, output_folder, status_queue):
+def analyze_genomic_composition(file_list, output_folder, status_queue, palette='viridis'):
     print(f"\n=== GENOMIC COMPOSITION ANALYSIS ===")
     all_data = {}
     
@@ -200,7 +200,7 @@ def analyze_genomic_composition(file_list, output_folder, status_queue):
     
     nt_compositions = [all_data[s]['composition'] for s in species]
     df_nt = pd.DataFrame(nt_compositions, index=species)
-    df_nt.plot(kind='barh', stacked=False, ax=ax1)
+    df_nt.plot(kind='barh', stacked=False, ax=ax1, colormap=palette)
     
     ax1.set_title('Nucleotide Composition (%)', fontweight='bold')
     ax1.set_xlabel('Percentage (%)') 
@@ -211,7 +211,7 @@ def analyze_genomic_composition(file_list, output_folder, status_queue):
     genome_sizes = [all_data[s]['total_length'] for s in species]
 
     scatter = ax2.scatter(gc_contents, genome_sizes, c=range(len(species)), 
-                          cmap='viridis', s=100, alpha=0.7, edgecolors='black')
+                          cmap=palette, s=100, alpha=0.7, edgecolors='black')
                           
     ax2.set_title('Genome Size vs GC Content', fontweight='bold')
     ax2.set_xlabel('GC (%)')
