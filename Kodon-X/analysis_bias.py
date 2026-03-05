@@ -106,6 +106,61 @@ def generate_rscu_heatmap_and_table(all_data, output_folder, genetic_code_id, st
     except Exception as e:
         print(f"\n❌ ERROR GENERATING CHART 2: {e}")
 
+    print("  Generating Chart 3: RSCU Line Plot...")
+    try:
+        aa_codon_map = AA_CODON_MAPS.get(genetic_code_id, AA_CODON_MAPS[1])
+        ordered_codons = []
+        ordered_aas = []
+        for aa in sorted(aa_codon_map.keys()):
+            if aa == '*': continue
+            for codon in sorted(aa_codon_map[aa]):
+                ordered_codons.append(codon)
+                ordered_aas.append(aa)
+
+        plt.figure(figsize=(26, 8))
+        
+        bg_colors = ['#ffffff', '#f0f4f8']
+        current_aa = ordered_aas[0]
+        start_idx = 0
+        color_idx = 0
+        
+        for i, aa in enumerate(ordered_aas):
+            if aa != current_aa:
+                plt.axvspan(start_idx - 0.5, i - 0.5, facecolor=bg_colors[color_idx % 2], alpha=1.0, zorder=0)
+                current_aa = aa
+                start_idx = i
+                color_idx += 1
+        plt.axvspan(start_idx - 0.5, len(ordered_aas) - 0.5, facecolor=bg_colors[color_idx % 2], alpha=1.0, zorder=0)
+
+        y_vals = [rscu_values.get(c, 0.0) for c in ordered_codons]
+        try:
+            line_color = sns.color_palette(palette)[0]
+        except:
+            line_color = 'teal'
+            
+        plt.plot(range(len(ordered_codons)), y_vals, label=base_filename, linewidth=2.5, marker='o', markersize=5, zorder=3, color=line_color)
+
+        plt.axhline(1.5, color='darkred', linestyle='--', alpha=0.8, label="Optimal (>1.5)", zorder=2)
+        plt.axhline(0.5, color='darkred', linestyle='--', alpha=0.8, label="Rare (<0.5)", zorder=2)
+        
+        labels = [f"{c}\n({a})" for c, a in zip(ordered_codons, ordered_aas)]
+        plt.xticks(range(len(ordered_codons)), labels, rotation=90, fontsize=11)
+        
+        plt.xlabel("Codon / Amino Acid", fontsize=13, fontweight='bold')
+        plt.ylabel("RSCU Value", fontsize=13, fontweight='bold')
+        plt.title(f"3. RSCU Distribution Profile Across All Codons - {base_filename}", fontsize=18, fontweight='bold')
+        
+        plt.grid(axis='y', linestyle=':', alpha=0.6, zorder=1)
+        plt.legend(bbox_to_anchor=(1.01, 1), loc='upper left')
+        plt.margins(x=0.01)
+        plt.tight_layout()
+
+        output_file3 = os.path.join(output_folder, f"rscu_3_lineplot_{base_filename}.png")
+        plt.savefig(output_file3, dpi=150, bbox_inches="tight")
+        plt.close()
+        status_queue.put(("image_ready", (output_file3, f"3. RSCU Line Plot")))
+    except Exception as e:
+        print(f"\n❌ ERROR GENERATING CHART 3: {e}")
 
 def comparative_rscu_analysis(all_data, output_folder, status_queue, palette='viridis'):
     print(f"\n=== COMPARATIVE RSCU ANALYSIS ===")
@@ -240,7 +295,6 @@ def rscu_correlation_analysis(all_data, output_folder, status_queue, palette='vi
     print(f"    📊 Pearson Coefficient (R): {r:.4f}")
     print(f"    📊 P-value: {p_value:.2e}")
     
-    # Criando um CSV muito mais completo que agrupa a correlação e a diferença por códon
     delta_rscu = np.abs(rscu_x - rscu_y)
     
     df_corr_details = pd.DataFrame({
