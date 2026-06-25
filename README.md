@@ -38,7 +38,6 @@
   - [Analysis 17 — Gene Group Comparison](#analysis-17--gene-group-comparison)
   - [Analysis 18 — Correlation with Expression](#analysis-18--correlation-with-expression)
 - [Output Architecture](#output-architecture)
-- [Case Studies](#case-studies)
 - [Project Structure](#project-structure)
 - [References](#references)
 
@@ -46,7 +45,7 @@
 
 ## Features Overview
 
-- **18 analysis modules** covering codon bias, comparative genomics, translation efficiency, physicochemistry, and gene expression.
+- **19 analysis modules** covering codon bias, comparative genomics, translation efficiency, physicochemistry, and gene expression.
 - **Synthetic Biology module** for sequence optimization and harmonization targeting heterologous expression systems.
 - Supports 4 **NCBI genetic code tables** (Standard, Vertebrate Mitochondrial, Mold/Protozoan, Bacterial/Plant Plastid).
 - Optional **gene-level filtering** via locus tag lists for targeted subset analysis.
@@ -568,25 +567,6 @@ All output files follow a consistent structure designed for scientific traceabil
 - **Dynamic filenames:** all output files incorporate the genome identifier, ensuring data provenance in automated pipelines.
 
 The GUI provides an integrated image viewer with zoom, pan, and individual export, plus a log console that reports analysis progress, CDS and codon counts, per-genome metric values, and annotation warnings in real time.
-
----
-
-## Case Studies
-
-Kódon-X was validated through case studies on four bacterial genomes from two clinically relevant species:
-
-| Genome | Species | Source |
-|--------|---------|--------|
-| SA22AQUAVET | *Streptococcus agalactiae* (strain 22) | AQUAVET Lab, UFMG |
-| SA90AQUAVET | *Streptococcus agalactiae* (strain 90) | AQUAVET Lab, UFMG |
-| AB_ACTC19606 | *Acinetobacter baumannii* ATCC 19606 | NCBI |
-| AB_XH1056 | *Acinetobacter baumannii* XH1056 | NCBI |
-
-**Key findings:**
-- *A. baumannii* strains showed greater inter-strain similarity than *S. agalactiae* strains, as evidenced by RSCU correlation regression.
-- The Wright Plot (per-gene scatter) revealed distinct patterns of mutational vs. selective pressure between the Gram-positive (*S. agalactiae*) and Gram-negative (*A. baumannii*) organisms.
-- Dinucleotide odds ratios (ρ_XY) clearly distinguished genomic signatures between the two species.
-- The combined four-genome analysis captured marked divergence in codon usage between phylogenetically distant organisms while maintaining analytical consistency.
 
 ---
 
