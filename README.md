@@ -45,7 +45,7 @@
 
 ## Features Overview
 
-- **19 analysis modules** covering codon bias, comparative genomics, translation efficiency, physicochemistry, and gene expression.
+- **18 analysis modules** covering codon bias, comparative genomics, translation efficiency, physicochemistry, and gene expression.
 - **Synthetic Biology module** for sequence optimization and harmonization targeting heterologous expression systems.
 - Supports 4 **NCBI genetic code tables** (Standard, Vertebrate Mitochondrial, Mold/Protozoan, Bacterial/Plant Plastid).
 - Optional **gene-level filtering** via locus tag lists for targeted subset analysis.
