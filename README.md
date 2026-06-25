@@ -5,8 +5,6 @@
 
 **Kódon-X** is an integrated bioinformatics platform for analyzing Codon Usage Bias (CUB) in prokaryotic and eukaryotic genomes. Developed in Python 3 with a modular architecture, the system consolidates nineteen analytical modules into a unified environment accessible via both a graphical user interface (GUI) and a command-line interface (CLI). It combines classical CUB metrics (RSCU, ENC, CAI) with advanced biophysical descriptors (tAI, GRAVY, Aromaticity, MFE), comparative genomics tools, and a synthetic biology module for rational gene design.
 
-> **Citation:** Barbanti ACC, Araújo VSC, Rosário AEC, Carneiro DVD, Tavares GC, Aburjaile FF. *Kódon-X: An Integrated Platform for Analyzing Codon Usage Bias in Prokaryotic and Eukaryotic Genomes.* Laboratory of Integrative Bioinformatics (LBI), Federal University of Minas Gerais (UFMG), Brazil.
-
 ---
 
 ## Table of Contents
@@ -643,6 +641,3 @@ Kodon-X/
 51. Yang Z & Nielsen R (2008). Mutation-selection models of codon substitution and their use to estimate selective strengths on codon usage. *Molecular Biology and Evolution*, 25(3), 568–579. https://doi.org/10.1093/molbev/msm284
 52. Zuker M & Stiegler P (1981). Optimal computer folding of large RNA sequences using thermodynamics and auxiliary information. *Nucleic Acids Research*, 9, 133–148. https://doi.org/10.1093/nar/9.1.133
 
----
-
-*Kódon-X — Developed at the Laboratory of Integrative Bioinformatics (LBI), Federal University of Minas Gerais (UFMG), Brazil.*
