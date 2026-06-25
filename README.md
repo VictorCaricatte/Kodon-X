@@ -20,22 +20,21 @@
   - [Analysis 1 — Statistics and CDS](#analysis-1--statistics-and-cds)
   - [Analysis 2 — Gene Listing](#analysis-2--gene-listing)
   - [Analysis 3 — Individual RSCU Heatmap](#analysis-3--individual-rscu-heatmap)
-  - [Analysis 4 — Comparative RSCU (Clustermap + PCA)](#analysis-4--comparative-rscu-clustermap--pca)
+  - [Analysis 4 — Comparative RSCU](#analysis-4--comparative-rscu)
   - [Analysis 5 — RSCU Correlation (2 Genomes)](#analysis-5--rscu-correlation-2-genomes)
-  - [Analysis 6 — Comparative RSCU Histograms](#analysis-6--comparative-rscu-histograms)
-  - [Analysis 7 — ENC vs GC3 (Wright Plot)](#analysis-7--enc-vs-gc3-wright-plot)
-  - [Analysis 8 — Genomic Composition](#analysis-8--genomic-composition)
-  - [Analysis 9 — Optimal, Rare Codons & CAI](#analysis-9--optimal-rare-codons--cai)
-  - [Analysis 10 — Codon Pair Bias (CPB)](#analysis-10--codon-pair-bias-cpb)
-  - [Analysis 11 — Physicochemical Analysis (GRAVY & Aromo)](#analysis-11--physicochemical-analysis-gravy--aromo)
-  - [Analysis 12 — Neutrality Plot (GC12 vs GC3)](#analysis-12--neutrality-plot-gc12-vs-gc3)
-  - [Analysis 13 — Dinucleotide Composition](#analysis-13--dinucleotide-composition)
-  - [Analysis 14 — PR2 Parity Plot](#analysis-14--pr2-parity-plot)
-  - [Analysis 15 — tRNA Adaptation Index (tAI)](#analysis-15--trna-adaptation-index-tai)
-  - [Analysis 16 — Upstream Motifs Analysis](#analysis-16--upstream-motifs-analysis)
-  - [Analysis 17 — MFE Analysis (5' Structure)](#analysis-17--mfe-analysis-5-structure)
-  - [Analysis 18 — Gene Group Comparison](#analysis-18--gene-group-comparison)
-  - [Analysis 19 — Correlation with Expression](#analysis-19--correlation-with-expression)
+  - [Analysis 6 — ENC vs GC3 (Wright Plot)](#analysis-7--enc-vs-gc3-wright-plot)
+  - [Analysis 7 — Genomic Composition](#analysis-8--genomic-composition)
+  - [Analysis 8 — Optimal, Rare Codons & CAI](#analysis-9--optimal-rare-codons--cai)
+  - [Analysis 9 — Codon Pair Bias (CPB)](#analysis-10--codon-pair-bias-cpb)
+  - [Analysis 10 — Physicochemical Analysis (GRAVY & Aromo)](#analysis-11--physicochemical-analysis-gravy--aromo)
+  - [Analysis 11 — Neutrality Plot (GC12 vs GC3)](#analysis-12--neutrality-plot-gc12-vs-gc3)
+  - [Analysis 12 — Dinucleotide Composition](#analysis-13--dinucleotide-composition)
+  - [Analysis 13 — PR2 Parity Plot](#analysis-14--pr2-parity-plot)
+  - [Analysis 14 — tRNA Adaptation Index (tAI)](#analysis-15--trna-adaptation-index-tai)
+  - [Analysis 15 — Upstream Motifs Analysis](#analysis-16--upstream-motifs-analysis)
+  - [Analysis 16 — MFE Analysis (5' Structure)](#analysis-17--mfe-analysis-5-structure)
+  - [Analysis 17 — Gene Group Comparison](#analysis-18--gene-group-comparison)
+  - [Analysis 18 — Correlation with Expression](#analysis-19--correlation-with-expression)
 - [Project Structure](#project-structure)
 - [References](#references)
 
@@ -43,7 +42,7 @@
 
 ## Features Overview
 
-- **19 analysis modules** covering codon bias, comparative genomics, translation efficiency, and gene expression.
+- **18 analysis modules** covering codon bias, comparative genomics, translation efficiency, and gene expression.
 - **Synthetic Biology module** for sequence optimization and harmonization.
 - Supports multiple **genetic code tables** (Standard, Vertebrate Mitochondrial, Bacterial/Plant Plastid, Mold/Protozoan).
 - Optional **gene-level filtering** via locus tag lists.
@@ -228,10 +227,10 @@ Global metrics (ENC, GC3, CAI) are also calculated for the genome — see Analys
 
 ---
 
-### Analysis 4 — Comparative RSCU (Clustermap + PCA)
+### Analysis 4 — Comparative RSCU 
 
 **Input:** 2 or more `.gbk` files  
-**Output:** Comparative RSCU matrix (CSV), clustermap (PNG), PCA plot (PNG)
+**Output:** Comparative RSCU matrix (CSV), clustermap (PNG), PCA plot (PNG), Comparative line plot per codon (PNG), Box plot by amino acid (PNG), Top -30 most variable codons - variance barplot (PNG), RSCU heatmap - 
 
 Compares codon usage profiles across multiple genomes by constructing a matrix of RSCU values (genomes × 64 codons), followed by hierarchical clustering (UPGMA with Euclidean distance) and Principal Component Analysis (PCA).
 
