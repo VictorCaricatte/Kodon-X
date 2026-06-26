@@ -170,7 +170,7 @@ def codon_pair_bias_analysis(file_list, output_folder, genetic_code_id, status_q
             print("  Generating Chart 3: Top 20 Over-represented Pairs...")
             top_over = df_cps_long_nonzero.sort_values('CPS', ascending=False).head(20)
             plt.figure(figsize=(12, 8))
-            sns.barplot(x='CPS', y='Pair', data=top_over, palette=palette)
+            sns.barplot(x='CPS', y='Pair', data=top_over, hue='Pair', palette=palette, legend=False)
             plt.axvline(0, color='grey', linestyle='--', linewidth=0.8)
             plt.title(f"3. Top 20 Over-represented Codon Pairs (CPS) — {species_name}", fontsize=14)
             plt.xlabel("Codon Pair Score (CPS)")
@@ -189,7 +189,7 @@ def codon_pair_bias_analysis(file_list, output_folder, genetic_code_id, status_q
             print("  Generating Chart 4: Top 20 Under-represented Pairs...")
             top_under = df_cps_long_nonzero.sort_values('CPS', ascending=True).head(20)
             plt.figure(figsize=(12, 8))
-            sns.barplot(x='CPS', y='Pair', data=top_under, palette=palette)
+            sns.barplot(x='CPS', y='Pair', data=top_under, hue='Pair', palette=palette, legend=False)
             plt.axvline(0, color='grey', linestyle='--', linewidth=0.8)
             plt.title(f"4. Top 20 Under-represented Codon Pairs (CPS) — {species_name}", fontsize=14)
             plt.xlabel("Codon Pair Score (CPS)")
@@ -301,7 +301,7 @@ def gravy_aromo_analysis(file_list, output_folder, genetic_code_id, status_queue
     try:
         print("  Generating Chart 2: GRAVY Boxplot...")
         plt.figure(figsize=(14, 6))
-        sns.boxplot(x='species', y='gravy', data=df_plot_long, palette=palette, showfliers=False)
+        sns.boxplot(x='species', y='gravy', data=df_plot_long, hue='species', palette=palette, legend=False, showfliers=False)
         plt.title("2. GRAVY Score Distribution by Species", fontsize=16)
         plt.ylabel("GRAVY Score")
         plt.xlabel("Species")
@@ -319,7 +319,7 @@ def gravy_aromo_analysis(file_list, output_folder, genetic_code_id, status_queue
     try:
         print("  Generating Chart 3: Aromaticity Boxplot...")
         plt.figure(figsize=(14, 6))
-        sns.boxplot(x='species', y='aromo', data=df_plot_long, palette=palette, showfliers=False)
+        sns.boxplot(x='species', y='aromo', data=df_plot_long, hue='species', palette=palette, legend=False, showfliers=False)
         plt.title("3. Aromaticity Score Distribution by Species", fontsize=16)
         plt.ylabel("Aromaticity Score (% F, Y, W)")
         plt.xlabel("Species")
@@ -438,7 +438,7 @@ def dinucleotide_composition_analysis(file_list, output_folder, status_queue, pa
     try:
         print("  Generating Chart 2: Dinucleotide ρ_XY Variance Boxplot...")
         plt.figure(figsize=(16, 6))
-        sns.boxplot(data=df_dinu, palette=palette, showfliers=False)
+        sns.boxplot(data=df_dinu, color=sns.color_palette(palette, 1)[0], showfliers=False)
         plt.axhline(y=1.0, color='red', linestyle='--', linewidth=1.5,
                     label='ρ = 1.0 (neutral expectation)')
         plt.title("2. Variation of Dinucleotide ρ_XY Across All Species", fontsize=16)
@@ -814,7 +814,7 @@ def tai_analysis(file_list, output_folder, genetic_code_id, status_queue, gene_l
         plot_title_str = f'1. Wobble-Weighted tAI Distribution ({super_kingdom})'
         if df_filtered_plot.empty: plot_title_str += "\n(Warning: All values at minimum floor)"
         
-        sns.boxplot(x='species', y='tAI', data=df_to_plot, palette=palette, showfliers=False)
+        sns.boxplot(x='species', y='tAI', data=df_to_plot, hue='species', palette=palette, legend=False, showfliers=False)
         plt.title(plot_title_str, fontsize=16)
         plt.ylabel('tAI (Geometric Mean of W Weights)')
         plt.xlabel('Species')
@@ -869,7 +869,7 @@ def tai_analysis(file_list, output_folder, genetic_code_id, status_queue, gene_l
     try:
         print("  Generating Chart 4: Calculated W-Weights Barplot...")
         plt.figure(figsize=(18, 6))
-        sns.barplot(x='Codon', y='Weight_W', data=df_W, palette=palette)
+        sns.barplot(x='Codon', y='Weight_W', data=df_W, hue='Codon', palette=palette, legend=False)
         plt.title(f"4. Calculated Codon Adaptation Weights (W) based on Wobble Rules", fontsize=16)
         plt.xticks(rotation=90, fontsize=10)
         plt.ylabel("W-Weight (Relative Adaptability)")
@@ -957,7 +957,7 @@ def upstream_motifs_analysis(file_list, output_folder, status_queue, gene_list=N
             try:
                 print("  Generating Chart 1: Top 25 K-mers Barplot...")
                 plt.figure(figsize=(10, 12))
-                sns.barplot(x='Count', y='K-mer', data=df_top_kmers, palette=palette)
+                sns.barplot(x='Count', y='K-mer', data=df_top_kmers, hue='K-mer', palette=palette, legend=False)
                 plt.title(f'1. Top 25 Most Frequent {kmer_size}-mers (Upstream {upstream_dist}bp)\n{base_name}', fontsize=14)
                 plt.xlabel('Absolute Count', fontsize=12)
                 plt.ylabel(f'{kmer_size}-mer', fontsize=12)
@@ -1002,7 +1002,7 @@ def upstream_motifs_analysis(file_list, output_folder, status_queue, gene_list=N
                 df_kmers['GC_Content'] = df_kmers['GC_Content'].round(1)
                 
                 plt.figure(figsize=(12, 8))
-                sns.boxplot(x='GC_Content', y='Count', data=df_kmers, palette=palette, showfliers=False)
+                sns.boxplot(x='GC_Content', y='Count', data=df_kmers, hue='GC_Content', palette=palette, legend=False, showfliers=False)
                 plt.title(f"3. K-mer GC Content vs Motif Frequency - {base_name}", fontsize=14)
                 plt.xlabel('GC Content (%)')
                 plt.ylabel('Absolute Frequency Count')

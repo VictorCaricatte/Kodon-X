@@ -1410,6 +1410,9 @@ class KodonE_GUI(QMainWindow):
                         analysis_function(all_bias_data, output_folder, self.status_queue,
                                           file_list=files, genetic_code_id=genetic_code_id,
                                           gene_list=gene_list, palette=palette)
+                    elif analysis_data['id'] == '4':
+                        analysis_function(all_bias_data, output_folder, self.status_queue,
+                                          genetic_code_id=genetic_code_id, palette=palette)
                     else:
                         analysis_function(all_bias_data, output_folder, self.status_queue, palette=palette)
             elif analysis_data['id'] == '1':

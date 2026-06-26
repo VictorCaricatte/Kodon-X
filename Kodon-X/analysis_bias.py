@@ -162,16 +162,17 @@ def generate_rscu_heatmap_and_table(all_data, output_folder, genetic_code_id, st
     except Exception as e:
         print(f"\n❌ ERROR GENERATING CHART 3: {e}")
 
-def comparative_rscu_analysis(all_data, output_folder, status_queue, palette='viridis'):
+def comparative_rscu_analysis(all_data, output_folder, status_queue, genetic_code_id=1, palette='viridis'):
     """Unified comparative RSCU module (analyses 4 + 6).
 
     Charts produced:
-      1. Clustermap        — hierarchical clustering of all species × 64 codons
-      2. PCA Biplot        — species scores + top-20 codon loading arrows
-      3. Line Plot         — per-codon RSCU profile for all species, grouped by AA
-      4. Box Plot by AA    — RSCU distribution per amino acid across all species
-      5. Variance Barplot  — top-30 codons by inter-species variance
-      6. Heatmap Top-30    — RSCU values for the 30 most divergent codons
+      1.  Clustermap        — hierarchical clustering of all species × 64 codons
+      2A. PCA Scores        — species in PC1 × PC2 space (samples space)
+      2B. PCA Loadings      — codon loading arrows in PC1 × PC2 space (biplot)
+      3.  Line Plot         — per-codon RSCU profile for all species, grouped by AA
+      4.  Box Plot by AA    — RSCU distribution per amino acid across all species
+      5.  Variance Barplot  — top-30 codons by inter-species variance
+      6.  Heatmap Top-30    — RSCU values for the 30 most divergent codons
     """
     print(f"\n=== COMPARATIVE RSCU ANALYSIS (unified) ===")
     all_rscu_data = {species: data['rscu'] for species, data in all_data.items()}
@@ -207,13 +208,14 @@ def comparative_rscu_analysis(all_data, output_folder, status_queue, palette='vi
         plt.setp(g.ax_heatmap.get_xticklabels(), rotation=90, fontsize=9)
         clustermap_path = os.path.join(output_folder, 'comparative_1_clustermap.png')
         g.savefig(clustermap_path, dpi=150, bbox_inches="tight")
-        plt.close()
+        plt.close(g.fig)
         status_queue.put(("image_ready", (clustermap_path, "1. RSCU Clustermap")))
     except Exception as e:
         print(f"  ❌ Chart 1 error: {e}")
 
-    # ── Chart 2: PCA Biplot (species scores + codon arrows) ───────────────────
-    print("  Generating Chart 2: PCA Biplot...")
+    # ── Chart 2A: PCA Scores (species in samples space) ──────────────────────
+    # ── Chart 2B: PCA Loadings biplot (codon arrows from origin) ─────────────
+    print("  Generating Chart 2: PCA (scores + loadings, separate figures)...")
     status_queue.put(("progress", 60))
     try:
         X_scaled = StandardScaler().fit_transform(df_rscu_matrix.values)
@@ -222,43 +224,70 @@ def comparative_rscu_analysis(all_data, output_folder, status_queue, palette='vi
         loadings = pca.components_.T          # shape: (n_codons, 2)
         pc1_var, pc2_var = pca.explained_variance_ratio_ * 100
 
-        # scale arrows to fit scores space
-        scale = np.max(np.abs(scores)) / np.max(np.abs(loadings)) * 0.7
+        score_pc1_max = max(np.max(np.abs(scores[:, 0])), 1e-9)
+        score_pc2_max = max(np.max(np.abs(scores[:, 1])), 1e-9)
 
-        # top-N codons by loading magnitude (most influential)
-        loading_mag = np.sqrt(loadings[:, 0]**2 + loadings[:, 1]**2)
-        top_idx = np.argsort(loading_mag)[-20:]
-
-        fig, ax = plt.subplots(figsize=(12, 10))
-
-        # species points
+        # ---- 2A. Samples / scores plot ------------------------------------
+        fig_a, ax_a = plt.subplots(figsize=(10, 8))
         sp_colors = sns.color_palette(palette, len(df_rscu_matrix))
         for i, species in enumerate(df_rscu_matrix.index):
-            ax.scatter(scores[i, 0], scores[i, 1], s=180, color=sp_colors[i],
-                       edgecolors='black', zorder=3)
-            ax.annotate(species, (scores[i, 0], scores[i, 1]),
-                        xytext=(6, 4), textcoords='offset points', fontsize=10, fontweight='bold')
-
-        # codon arrows (top 20 by loading magnitude)
-        for idx in top_idx:
-            xarr = loadings[idx, 0] * scale
-            yarr = loadings[idx, 1] * scale
-            ax.annotate("", xy=(xarr, yarr), xytext=(0, 0),
-                        arrowprops=dict(arrowstyle='->', color='grey', lw=1.2, alpha=0.7))
-            ax.text(xarr * 1.08, yarr * 1.08, ALL_CODONS_SORTED[idx],
-                    fontsize=8, color='dimgrey', ha='center', va='center')
-
-        ax.axhline(0, color='grey', linestyle='--', linewidth=0.8)
-        ax.axvline(0, color='grey', linestyle='--', linewidth=0.8)
-        ax.set_xlabel(f'PC1 ({pc1_var:.1f}%)', fontsize=12)
-        ax.set_ylabel(f'PC2 ({pc2_var:.1f}%)', fontsize=12)
-        ax.set_title('2. RSCU PCA Biplot — Species Scores + Top-20 Codon Loadings', fontsize=14)
-        ax.grid(alpha=0.3)
+            x, y = scores[i, 0], scores[i, 1]
+            ax_a.scatter(x, y, s=180, color=sp_colors[i],
+                         edgecolors='black', zorder=3)
+            # Position-aware label placement so names near the edge don't get
+            # clipped: anchor the label on the side facing the chart center.
+            ha = 'right' if x > 0 else 'left'
+            x_off = -8 if x > 0 else 8
+            y_off = 6 if y >= 0 else -10
+            va = 'bottom' if y >= 0 else 'top'
+            ax_a.annotate(species, (x, y),
+                          xytext=(x_off, y_off), textcoords='offset points',
+                          fontsize=10, fontweight='bold',
+                          ha=ha, va=va, clip_on=False, zorder=4)
+        ax_a.axhline(0, color='grey', linestyle='--', linewidth=0.8)
+        ax_a.axvline(0, color='grey', linestyle='--', linewidth=0.8)
+        # Extra margin so even position-aware labels for long species names
+        # at extreme scores still have room before bbox_inches='tight' kicks in.
+        ax_a.set_xlim(-score_pc1_max * 1.35, score_pc1_max * 1.35)
+        ax_a.set_ylim(-score_pc2_max * 1.35, score_pc2_max * 1.35)
+        ax_a.set_xlabel(f'Principal Component 1 ({pc1_var:.2f}%)', fontsize=12)
+        ax_a.set_ylabel(f'Principal Component 2 ({pc2_var:.2f}%)', fontsize=12)
+        ax_a.set_title('RSCU Principal Component Analysis (Samples Space)', fontsize=14)
+        ax_a.grid(alpha=0.3)
         plt.tight_layout()
-        pca_path = os.path.join(output_folder, 'comparative_2_pca_biplot.png')
-        plt.savefig(pca_path, dpi=150, bbox_inches="tight")
-        plt.close()
-        status_queue.put(("image_ready", (pca_path, "2. PCA Biplot")))
+        path_2a = os.path.join(output_folder, 'comparative_2a_pca_samples.png')
+        fig_a.savefig(path_2a, dpi=150, bbox_inches="tight")
+        plt.close(fig_a)
+        status_queue.put(("image_ready", (path_2a, "2A. PCA — Samples Space")))
+
+        # ---- 2B. Loadings / codon-biplot ---------------------------------
+        # Plot all 64 codons in loading space (PCA components_, not scaled).
+        load_pc1_max = max(np.max(np.abs(loadings[:, 0])), 1e-9)
+        load_pc2_max = max(np.max(np.abs(loadings[:, 1])), 1e-9)
+
+        fig_b, ax_b = plt.subplots(figsize=(10, 8))
+        for idx, codon in enumerate(ALL_CODONS_SORTED):
+            xarr, yarr = loadings[idx, 0], loadings[idx, 1]
+            ax_b.annotate("", xy=(xarr, yarr), xytext=(0, 0),
+                          arrowprops=dict(arrowstyle='->', color='#3a3a82',
+                                          lw=1.0, alpha=0.7))
+            ax_b.text(xarr * 1.08, yarr * 1.08, codon,
+                      fontsize=8, color='#3a3a82',
+                      ha='center', va='center', clip_on=True)
+
+        ax_b.axhline(0, color='grey', linestyle='--', linewidth=0.8)
+        ax_b.axvline(0, color='grey', linestyle='--', linewidth=0.8)
+        ax_b.set_xlim(-load_pc1_max * 1.25, load_pc1_max * 1.25)
+        ax_b.set_ylim(-load_pc2_max * 1.25, load_pc2_max * 1.25)
+        ax_b.set_xlabel(f'Component 1 ({pc1_var:.2f}%)', fontsize=12)
+        ax_b.set_ylabel(f'Component 2 ({pc2_var:.2f}%)', fontsize=12)
+        ax_b.set_title('RSCU Principal Component Analysis (Codon Loadings / Biplot)', fontsize=14)
+        ax_b.grid(alpha=0.3)
+        plt.tight_layout()
+        path_2b = os.path.join(output_folder, 'comparative_2b_pca_loadings.png')
+        fig_b.savefig(path_2b, dpi=150, bbox_inches="tight")
+        plt.close(fig_b)
+        status_queue.put(("image_ready", (path_2b, "2B. PCA — Codon Loadings")))
     except Exception as e:
         print(f"  ❌ Chart 2 error: {e}")
 
@@ -266,8 +295,8 @@ def comparative_rscu_analysis(all_data, output_folder, status_queue, palette='vi
     print("  Generating Chart 3: Comparative Line Plot...")
     status_queue.put(("progress", 70))
     try:
-        # build codon order grouped by AA
-        aa_codon_map = AA_CODON_MAPS.get(1, AA_CODON_MAPS[1])
+        # build codon order grouped by AA (using the selected genetic code)
+        aa_codon_map = AA_CODON_MAPS.get(genetic_code_id, AA_CODON_MAPS[1])
         ordered_codons, ordered_aas = [], []
         for aa in sorted(aa_codon_map.keys()):
             if aa == '*':
@@ -319,7 +348,7 @@ def comparative_rscu_analysis(all_data, output_folder, status_queue, palette='vi
     print("  Generating Chart 4: Box Plot by Amino Acid...")
     status_queue.put(("progress", 80))
     try:
-        codon_aa_map = GENETIC_CODE_TABLES.get(1, GENETIC_CODE_TABLES[1])
+        codon_aa_map = GENETIC_CODE_TABLES.get(genetic_code_id, GENETIC_CODE_TABLES[1])
         df_long = (
             df_rscu_matrix.reset_index()
             .rename(columns={'Species': 'Species'})
@@ -459,7 +488,8 @@ def rscu_correlation_analysis(all_data, output_folder, status_queue, palette='vi
     try:
         delta_sorted = delta_rscu.sort_values(ascending=False)
         plt.figure(figsize=(18, 6))
-        sns.barplot(x=delta_sorted.index, y=delta_sorted.values, palette=palette)
+        sns.barplot(x=list(delta_sorted.index), y=list(delta_sorted.values),
+                    hue=list(delta_sorted.index), palette=palette, legend=False)
         plt.title(f"2. Absolute Difference (Delta RSCU) per Codon: {species_x} vs {species_y}", fontsize=16)
         plt.xticks(rotation=90, fontsize=10)
         plt.ylabel("Delta |RSCU|")
@@ -614,7 +644,7 @@ def enc_gc3_analysis(all_data, output_folder, status_queue, file_list=None, gene
     try:
         plt.figure(figsize=(14, 6))
         df_sorted = df_genome.sort_values('ENC')
-        sns.barplot(x='Species', y='ENC', data=df_sorted, palette=palette)
+        sns.barplot(x='Species', y='ENC', data=df_sorted, hue='Species', palette=palette, legend=False)
         plt.axhline(61, color='red', linestyle='--', label='Theoretical Max (61)')
         plt.axhline(df_genome['ENC'].mean(), color='blue', linestyle='-.', label='Population Mean')
         plt.title("4. Effective Number of Codons (ENC) by Species", fontsize=16)
@@ -632,6 +662,9 @@ def enc_gc3_analysis(all_data, output_folder, status_queue, file_list=None, gene
         print(f"  ❌ Error: {e}")
 
     df_genome.to_csv(os.path.join(output_folder, 'enc_gc3_results.csv'), sep=';', index=False)
+    if not df_genes.empty:
+        df_genes.to_csv(os.path.join(output_folder, 'enc_gc3_per_gene.csv'), sep=';', index=False)
+        print(f"  📄 Per-gene CSV saved: enc_gc3_per_gene.csv ({len(df_genes)} rows)")
 
 
 def optimal_rare_codons_analysis(all_data, output_folder, status_queue, palette='viridis'):
@@ -676,7 +709,7 @@ def optimal_rare_codons_analysis(all_data, output_folder, status_queue, palette=
     try:
         plt.figure(figsize=(14, 6))
         df_sorted_cai = df_stats.sort_values('CAI')
-        bars = sns.barplot(x='Species', y='CAI', data=df_sorted_cai, palette=palette)
+        bars = sns.barplot(x='Species', y='CAI', data=df_sorted_cai, hue='Species', palette=palette, legend=False)
         plt.title('2. Codon Adaptation Index (CAI) by Species', fontsize=16, fontweight='bold')
         plt.xticks(rotation=45, ha="right")
         plt.grid(axis='y', alpha=0.3)
@@ -722,7 +755,7 @@ def optimal_rare_codons_analysis(all_data, output_folder, status_queue, palette=
         df_opt_rscu = pd.DataFrame(opt_rscu_data)
         
         plt.figure(figsize=(14, 6))
-        sns.boxplot(x='Species', y='RSCU', data=df_opt_rscu, palette=palette, showfliers=False)
+        sns.boxplot(x='Species', y='RSCU', data=df_opt_rscu, hue='Species', palette=palette, legend=False, showfliers=False)
         plt.title("4. Distribution of RSCU Values for Optimal Codons Only", fontsize=16)
         plt.axhline(1.5, color='red', linestyle='--', label='Optimal Threshold')
         plt.xticks(rotation=45, ha='right')
@@ -794,23 +827,33 @@ def neutrality_plot_analysis(all_data, output_folder, status_queue, file_list=No
         plt.figure(figsize=(10, 8))
 
         if not df_genes.empty:
-            # Per-gene scatter + per-species regression lines
+            # Per-gene scatter + per-species regression lines.
+            # Single legend entry per species (scatter has no label; the regression
+            # line carries species name + slope + R²).
+            # Reference line y = x (slope=1): pure mutational neutrality (Sueoka).
+            plt.plot([0, 100], [0, 100], color='black', linestyle='--',
+                     linewidth=1.5, alpha=0.6,
+                     label='y = x  (slope=1, pure mutational neutrality)', zorder=2)
+
             species_list = df_genes['Species'].unique()
             colors = sns.color_palette(palette, len(species_list))
             for sp, col in zip(species_list, colors):
                 sub = df_genes[df_genes['Species'] == sp]
                 plt.scatter(sub['GC3'], sub['GC12'], color=col, s=15, alpha=0.35,
-                            edgecolor='none', label=f'{sp}')
-                if len(sub) >= 2:
+                            edgecolor='none')
+                if len(sub) >= 3:
                     sl, intercept, r_val, p_val, _ = linregress(sub['GC3'], sub['GC12'])
                     x_vals = np.linspace(sub['GC3'].min(), sub['GC3'].max(), 100)
                     plt.plot(x_vals, intercept + sl * x_vals, color=col, linewidth=2,
-                             label=f'{sp} slope={sl:.3f} R²={r_val**2:.3f}')
+                             label=f'{sp}  slope={sl:.3f}  R²={r_val**2:.3f}')
                     print(f"  [{sp}] slope={sl:.3f}, R²={r_val**2:.3f}, p={p_val:.4f}")
+                else:
+                    # Still include the species in the legend even without regression
+                    plt.plot([], [], color=col, linewidth=2, label=f'{sp}  (N<3)')
             title_str = '1. Neutrality Plot — GC12 vs GC3 (per gene, Sueoka 1992)'
         else:
             # Fallback: genome-level
-            if len(df_genome) >= 2:
+            if len(df_genome) >= 3:
                 slope, intercept, r_value, p_value, _ = linregress(df_genome['GC3'], df_genome['GC12'])
                 x_vals = np.array([0, 100])
                 plt.plot(x_vals, intercept + slope * x_vals, 'r--',
@@ -826,7 +869,9 @@ def neutrality_plot_analysis(all_data, output_folder, status_queue, file_list=No
         plt.xlabel('GC3 (%)', fontsize=12)
         plt.ylabel('GC12 (%)', fontsize=12)
         plt.title(title_str, fontsize=15)
-        plt.legend(loc='upper left', fontsize=9)
+        # Legend outside the plot area on the right so it never covers the data
+        plt.legend(loc='upper left', bbox_to_anchor=(1.02, 1.0),
+                   fontsize=9, frameon=True, borderaxespad=0.0)
         plt.grid(True, alpha=0.3)
         plt.xlim(0, 100)
         plt.ylim(0, 100)
@@ -907,3 +952,6 @@ def neutrality_plot_analysis(all_data, output_folder, status_queue, file_list=No
         print(f"  ❌ Error: {e}")
 
     df_genome.to_csv(os.path.join(output_folder, 'neutrality_plot_results.csv'), sep=';', index=False)
+    if not df_genes.empty:
+        df_genes.to_csv(os.path.join(output_folder, 'neutrality_plot_per_gene.csv'), sep=';', index=False)
+        print(f"  📄 Per-gene CSV saved: neutrality_plot_per_gene.csv ({len(df_genes)} rows)")

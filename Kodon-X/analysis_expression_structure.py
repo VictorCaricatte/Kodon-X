@@ -82,7 +82,7 @@ def initiation_mfe_analysis(file_list, output_folder, genetic_code_id, status_qu
     try:
         print("  Generating Chart 1: MFE Box Plot...")
         plt.figure(figsize=(max(12, len(all_seqs_by_species)*1.5), 8))
-        sns.boxplot(x='species', y='mfe', data=df_plot_long, palette=palette, showfliers=False)
+        sns.boxplot(x='species', y='mfe', data=df_plot_long, hue='species', palette=palette, legend=False, showfliers=False)
         plt.title(f"1. MFE Distribution (Minimum Free Energy) - 5' Region ({mfe_region_length}bp)", fontsize=16)
         plt.ylabel('MFE (kcal/mol)\n(More negative = more stable/structured)')
         plt.xlabel('Species')
@@ -117,7 +117,7 @@ def initiation_mfe_analysis(file_list, output_folder, genetic_code_id, status_qu
     try:
         print("  Generating Chart 3: MFE Violin Plot...")
         plt.figure(figsize=(max(12, len(all_seqs_by_species)*1.5), 8))
-        sns.violinplot(x='species', y='mfe', data=df_plot_long, palette=palette, inner='quartile')
+        sns.violinplot(x='species', y='mfe', data=df_plot_long, hue='species', palette=palette, legend=False, inner='quartile')
         plt.title(f"3. Violin Plot of MFE Distributions ({mfe_region_length}bp)", fontsize=16)
         plt.xlabel('Species')
         plt.ylabel('MFE (kcal/mol)')
@@ -226,15 +226,15 @@ def two_groups_comparative_analysis(file_list, output_folder, genetic_code_id, s
         print("  Generating Chart 1: Group Boxplots...")
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(20, 8))
         
-        sns.boxplot(x='group', y='enc', data=df_plot, ax=ax1, palette=palette, showfliers=False)
+        sns.boxplot(x='group', y='enc', data=df_plot, ax=ax1, hue='group', palette=palette, legend=False, showfliers=False)
         ax1.set_title(f"ENC (p = {p_values.get('enc', np.nan):.2e})", fontsize=14)
         ax1.set_xlabel("")
         
-        sns.boxplot(x='group', y='gc3', data=df_plot, ax=ax2, palette=palette, showfliers=False)
+        sns.boxplot(x='group', y='gc3', data=df_plot, ax=ax2, hue='group', palette=palette, legend=False, showfliers=False)
         ax2.set_title(f"GC3 (p = {p_values.get('gc3', np.nan):.2e})", fontsize=14)
         ax2.set_xlabel("")
         
-        sns.boxplot(x='group', y='cai', data=df_plot, ax=ax3, palette=palette, showfliers=False)
+        sns.boxplot(x='group', y='cai', data=df_plot, ax=ax3, hue='group', palette=palette, legend=False, showfliers=False)
         ax3.set_title(f"CAI (p = {p_values.get('cai', np.nan):.2e})", fontsize=14)
         ax3.set_xlabel("")
         
@@ -401,11 +401,23 @@ def expression_correlation_analysis(file_list, output_folder, genetic_code_id, s
     print(f"  ✅ {len(df_merged)} genes with metric and expression data found.")
     
     print("\n--- Statistical Results (Spearman Correlation) ---")
-    corr_cai, p_cai = spearmanr(df_merged['cai'].dropna(), df_merged['expr_log'].dropna())
-    print(f"  CAI vs Expression (log10): Rho = {corr_cai:.3f}, p-value = {p_cai:.4e}")
-    
-    corr_enc, p_enc = spearmanr(df_merged['enc'].dropna(), df_merged['expr_log'].dropna())
-    print(f"  ENC vs Expression (log10): Rho = {corr_enc:.3f}, p-value = {p_enc:.4e}")
+    # Joint dropna so paired arrays stay row-aligned (NaNs in one column would
+    # otherwise misalign with the other).
+    df_cai_pair = df_merged[['cai', 'expr_log']].dropna()
+    if len(df_cai_pair) >= 3:
+        corr_cai, p_cai = spearmanr(df_cai_pair['cai'], df_cai_pair['expr_log'])
+        print(f"  CAI vs Expression (log10): Rho = {corr_cai:.3f}, p-value = {p_cai:.4e} (N = {len(df_cai_pair)})")
+    else:
+        corr_cai, p_cai = np.nan, np.nan
+        print(f"  ⚠️ CAI vs Expression: insufficient paired data (N = {len(df_cai_pair)})")
+
+    df_enc_pair = df_merged[['enc', 'expr_log']].dropna()
+    if len(df_enc_pair) >= 3:
+        corr_enc, p_enc = spearmanr(df_enc_pair['enc'], df_enc_pair['expr_log'])
+        print(f"  ENC vs Expression (log10): Rho = {corr_enc:.3f}, p-value = {p_enc:.4e} (N = {len(df_enc_pair)})")
+    else:
+        corr_enc, p_enc = np.nan, np.nan
+        print(f"  ⚠️ ENC vs Expression: insufficient paired data (N = {len(df_enc_pair)})")
     
     status_queue.put(("progress", 80))
 
@@ -477,7 +489,7 @@ def expression_correlation_analysis(file_list, output_folder, genetic_code_id, s
         df_merged['CAI_Quartile'] = pd.qcut(df_merged['cai'], 4, labels=['Q1 (Lowest Bias)', 'Q2', 'Q3', 'Q4 (Highest Bias)'])
         
         plt.figure(figsize=(12, 8))
-        sns.boxplot(x='CAI_Quartile', y='expr_log', data=df_merged, palette=palette, showfliers=False)
+        sns.boxplot(x='CAI_Quartile', y='expr_log', data=df_merged, hue='CAI_Quartile', palette=palette, legend=False, showfliers=False)
         plt.title("4. Gene Expression Levels Distributed by CAI Quartiles", fontsize=16)
         plt.xlabel("CAI Quartiles")
         plt.ylabel(f"Expression (log10 {expr_col})")

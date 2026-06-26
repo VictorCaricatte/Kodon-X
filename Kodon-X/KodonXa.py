@@ -284,7 +284,8 @@ AVAILABLE ANALYSES (-a / --analysis):
             if len(files) < 2:
                 print("[!] Analysis 4 requires 2 or more files.")
                 sys.exit(1)
-            comparative_rscu_analysis(all_bias_data, args.output, status_queue, palette=args.palette)
+            comparative_rscu_analysis(all_bias_data, args.output, status_queue,
+                                      genetic_code_id=genetic_code_id, palette=args.palette)
 
         elif args.analysis == 5:
             if len(files) != 2:
