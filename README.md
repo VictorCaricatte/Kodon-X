@@ -239,20 +239,21 @@ Three figures are generated: (i) a 4×16 heatmap on the canonical genetic code g
 ### Analysis 4 — Comparative RSCU (Clustermap + PCA + Histograms)
 
 **Input:** 2 or more `.gbk` files
-**Output:** Comparative RSCU matrix (CSV), 8 figures (PNG)
+**Output:** Comparative RSCU matrix (CSV), 9 figures (PNG)
 
-Unified comparative RSCU module. Compares codon usage profiles across multiple genomes via an integrated approach combining descriptive statistics, eight visualization methods, and multivariate analysis:
+Unified comparative RSCU module. Compares codon usage profiles across multiple genomes via an integrated approach combining descriptive statistics, nine visualization methods, and multivariate analysis:
 
 1. **Clustermap** — UPGMA hierarchical clustering (Euclidean distance; Sneath & Sokal 1973)
-2. **PCA projection** — Z-score normalization (StandardScaler) prior to PCA with explained variance reported on axes
-3. **PCA biplot (loadings)** — identifies the codons driving variance
-4. **Variance boxplot** — RSCU variance per codon across genomes
-5. **Aggregated boxplot** — RSCU distribution per amino acid for all samples, with reference line at RSCU = 1.0
-6. **Stacked bar charts** — fractional synonymous codon contribution per amino acid per genome
-7. **Comparative line plots** — RSCU values per codon organized by amino acid for each genome
-8. **Global heatmap** — RSCU matrix grouped by amino acid; color intensity represents preference level
+2. **PCA — Samples Space (2A)** — species projected onto PC1 × PC2 with Z-score normalization (StandardScaler) and position-aware labels to prevent edge clipping
+3. **PCA — Codon Loadings / Biplot (2B)** — all 64 codons as arrows from the origin in PC1 × PC2 loading space, identifying which codons drive each component
+4. **Comparative line plot** — RSCU values per codon organized by amino acid for each genome
+5. **Aggregated boxplot by amino acid** — RSCU distribution per amino acid for all samples, with reference line at RSCU = 1.0
+6. **Variance barplot** — top-30 codons by inter-species RSCU variance
+7. **Top-30 divergent heatmap** — RSCU matrix of the 30 most variable codons across genomes
+8. **Stacked bar charts** — fractional synonymous codon contribution per amino acid per genome
+9. **Global heatmap** — RSCU matrix grouped by amino acid; color intensity represents preference level
 
-The consolidated RSCU matrix (genomes × 64 codons) is exported in CSV format.
+Charts 2A and 2B are saved as separate files (`comparative_2a_pca_samples.png`, `comparative_2b_pca_loadings.png`) so each can be inspected independently. The codon grouping in charts 4 and 5 respects the user-selected NCBI genetic code table. The consolidated RSCU matrix (genomes × 64 codons) is exported in CSV format.
 
 **References:**
 - Karlin S & Mrazek J (1996). What drives codon choices in human genes? *Journal of Molecular Biology*, 262(4), 459–472. https://doi.org/10.1006/jmbi.1996.0528
@@ -279,7 +280,7 @@ Assesses evolutionary and mutational proximity between a pair of genomes via thr
 ### Analysis 6 — ENC vs GC3 (Wright Plot)
 
 **Input:** 2 or more `.gbk` files
-**Output:** Wright plot (PNG), ENC/GC3 per-gene results table (CSV), KDE plots and comparative bar charts (PNG)
+**Output:** Wright plot (PNG), KDE plots and comparative bar charts (PNG), genome-level results table (`enc_gc3_results.csv`), per-gene results table (`enc_gc3_per_gene.csv`)
 
 The **Wright Plot** (ENC vs GC3) distinguishes the driving forces behind codon bias. **Each point represents an individual CDS gene**, colored by species. Points on or near the theoretical expected curve indicate codon bias driven primarily by **mutational pressure** (GC-biased mutation). Points falling substantially below the curve indicate **natural selection** on translational efficiency as an additional force.
 
@@ -406,15 +407,15 @@ Results are displayed in a two-dimensional GRAVY vs. Aromaticity scatter, supple
 ### Analysis 11 — Neutrality Plot (GC12 vs GC3)
 
 **Input:** 2 or more `.gbk` files
-**Output:** Neutrality plot with per-species linear regressions (PNG), GC by codon position bar charts (PNG), KDE density plots (PNG), regression statistics table (CSV)
+**Output:** Neutrality plot with per-species linear regressions (PNG), GC by codon position bar charts (PNG), KDE density plots (PNG), genome-level regression statistics table (`neutrality_plot_results.csv`), per-gene table (`neutrality_plot_per_gene.csv`)
 
-The **Neutrality Plot** (GC12 vs GC3), following Sueoka (1988, 1999), quantifies the relative contribution of **mutational pressure** versus **natural selection** to codon usage. For each species, an OLS linear regression is fitted using **one point per CDS gene** (GC12 of the gene vs. GC3 of the gene). The slope, intercept, R², and p-value are reported per species.
+The **Neutrality Plot** (GC12 vs GC3), following Sueoka (1988, 1999), quantifies the relative contribution of **mutational pressure** versus **natural selection** to codon usage. For each species, an OLS linear regression is fitted using **one point per CDS gene** (GC12 of the gene vs. GC3 of the gene). The slope, intercept, R², and p-value are reported per species (regression is skipped when N < 3 genes).
 
 - **Slope ≈ 1.0:** mutational pressure dominates (all codon positions shift equally with GC content)
 - **Slope ≈ 0.0:** translational selection dominates (GC3 diverges from GC12 independently)
 - **0 < slope < 1:** combined action of mutation and selection; proportion attributable to selection ≈ 1 − slope
 
-GC12 is the mean GC content at first and second codon positions (functionally constrained, encoding amino acid identity). GC3 is GC at the third (synonymous) position. Under pure mutational drift, GC12 ≈ GC3 (slope ≈ 1).
+GC12 is the mean GC content at first and second codon positions (functionally constrained, encoding amino acid identity). GC3 is GC at the third (synonymous) position. Under pure mutational drift, GC12 ≈ GC3 (slope ≈ 1). The plot overlays a **black dashed reference line `y = x`** (slope = 1, pure mutational neutrality) so the visual distance between each species' regression and the reference encodes the strength of selection at a glance. The legend is rendered outside the chart area to avoid covering data.
 
 **References:**
 - Sueoka N (1988). Directional mutation pressure and neutral molecular evolution. *PNAS*, 85(8), 2653–2657. https://doi.org/10.1073/pnas.85.8.2653
@@ -640,4 +641,6 @@ Kodon-X/
 50. Wu G, Bashir-Bello N & Freeland SJ (2006). The Synthetic Gene Designer: A flexible web platform to explore sequence manipulation for heterologous expression. *Protein Expression and Purification*, 47, 441–445. https://doi.org/10.1016/j.pep.2005.10.020
 51. Yang Z & Nielsen R (2008). Mutation-selection models of codon substitution and their use to estimate selective strengths on codon usage. *Molecular Biology and Evolution*, 25(3), 568–579. https://doi.org/10.1093/molbev/msm284
 52. Zuker M & Stiegler P (1981). Optimal computer folding of large RNA sequences using thermodynamics and auxiliary information. *Nucleic Acids Research*, 9, 133–148. https://doi.org/10.1093/nar/9.1.133
+
+---
 
